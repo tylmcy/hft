@@ -2,9 +2,55 @@
 
 ## Project Overview
 
-A股交易系统，单JVM部署，目标 100K TPS，P99延迟 <15ms。
+A股模拟交易系统，单JVM部署，目标 100K TPS，P99延迟 <15ms。
+
+**系统定位**：
+- 模拟交易系统，入金手工上账
+- 交易、清结算逻辑完整正确
+- 内部用户间撮合（含做市商策略用户）
+- 五档行情来自撮合引擎订单簿，新浪行情仅展示
 
 ## Architecture
+
+### Deployment Architecture
+
+**前后端一体化部署**：前端静态资源打包后部署在后端Tomcat中，随JVM一起启动。
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              单JVM进程                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         Tomcat容器                                   │   │
+│  │                                                                     │   │
+│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐            │   │
+│  │  │  静态资源     │  │  REST API     │  │  WebSocket    │            │   │
+│  │  │  (前端SPA)    │  │  (Spring MVC) │  │  (Netty)      │            │   │
+│  │  │  /index.html  │  │  /api/*       │  │  /ws          │            │   │
+│  │  └───────────────┘  └───────────────┘  └───────────────┘            │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                          业务层                                     │   │
+│  │  订单网关 → 撮合引擎 → 清算服务                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                          存储层                                     │   │
+│  │  Chronicle Map/Queue + H2 Database                                  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**部署说明**：
+- 前端React应用打包为静态资源（HTML/CSS/JS）
+- 静态资源放入 `src/main/resources/static/` 目录
+- Spring Boot启动时自动托管静态资源
+- 访问 `http://host:port/` 即可访问前端页面
+- API接口 `http://host:port/api/*`
+- WebSocket `ws://host:port/ws`
 
 ### Core Components
 
@@ -162,7 +208,8 @@ OrderBook 状态存储在 `orderbook.dat` Chronicle Map，JVM重启后自动恢�
 | 内存存储 | Chronicle Map |
 | 数据库 | H2 (磁盘模式) |
 | GC策略 | ZGC (Generational) |
-| Web容器 | Spring Boot 4 + Virtual Threads |
+| Web容器 | Spring Boot 4 + Tomcat |
+| 前端部署 | 打包到 static/ 目录，随JVM启动 |
 | 监控 | Prometheus + Grafana |
 | 日志 | ELK Stack |
 | 链路追踪 | Jaeger |
@@ -170,6 +217,44 @@ OrderBook 状态存储在 `orderbook.dat` Chronicle Map，JVM重启后自动恢�
 | 前端图表 | TradingView |
 | 前端UI | Ant Design 5.x |
 | 前端状态 | Zustand |
+
+## Build & Deploy
+
+### 前端构建
+
+```bash
+# 进入前端目录
+cd frontend
+
+# 安装依赖
+npm install
+
+# 构建生产版本
+npm run build
+
+# 复制到后端静态资源目录
+cp -r dist/* ../src/main/resources/static/
+```
+
+### 后端构建
+
+```bash
+# Maven打包
+mvn clean package -DskipTests
+
+# 运行
+java -Xms10g -Xmx10g -XX:+UseZGC -jar target/hft-trading.jar
+```
+
+### 访问地址
+
+| 资源 | 地址 |
+|------|------|
+| 前端页面 | http://host:port/ |
+| REST API | http://host:port/api/* |
+| WebSocket | ws://host:port/ws |
+| OpenAPI | http://host:port/openapi/* |
+| 健康检查 | http://host:port/actuator/health |
 
 ## Documentation
 
