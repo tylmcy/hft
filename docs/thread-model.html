@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A股交易系统 - 线程模型图</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1800px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; margin-bottom: 2rem; }
+    svg { width: 100%; min-width: 1600px; display: block; }
+    .section-title { color: #22d3ee; font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; padding-left: 0.5rem; border-left: 3px solid #22d3ee; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card-dot.orange { background: #fb923c; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Thread Model Diagram</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">线程分类 · 并发模型 · Chronicle Map 访问模式 · compute 原子操作</p>
+    </div>
+
+    <!-- 线程模型总览图 -->
+    <h2 class="section-title">一、线程模型总览</h2>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1700 900">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb923c" />
+          </marker>
+          <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+          <linearGradient id="threadGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#22d3ee;stop-opacity:0.3" />
+            <stop offset="100%" style="stop-color:#22d3ee;stop-opacity:0.1" />
+          </linearGradient>
+        </defs>
+
+        <!-- Background -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===================== 标题 ===================== -->
+        <text x="850" y="35" fill="white" font-size="16" font-weight="700" text-anchor="middle">A 股交易系统线程模型 - compute 原子操作保证数据安全</text>
+
+        <!-- ===================== 线程池区域 ===================== -->
+
+        <!-- Tomcat 线程池 -->
+        <rect x="30" y="60" width="280" height="380" rx="8" fill="rgba(8, 51, 68, 0.2)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="170" y="85" fill="#22d3ee" font-size="12" font-weight="600" text-anchor="middle">Tomcat 线程池</text>
+        <text x="170" y="102" fill="#94a3b8" font-size="9" text-anchor="middle">(HTTP 请求处理)</text>
+
+        <!-- HTTP 线程 -->
+        <rect x="50" y="120" width="240" height="80" rx="6" fill="#0f172a"/>
+        <rect x="50" y="120" width="240" height="80" rx="6" fill="rgba(34, 211, 238, 0.15)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="170" y="145" fill="white" font-size="11" font-weight="600" text-anchor="middle">HTTP-IO-Thread-N</text>
+        <text x="170" y="162" fill="#22d3ee" font-size="8" text-anchor="middle">Tomcat NIO 线程</text>
+        <text x="170" y="180" fill="#94a3b8" font-size="7" text-anchor="middle">• 接收 HTTP 请求</text>
+        <text x="170" y="193" fill="#94a3b8" font-size="7" text-anchor="middle">• 解析参数、Token 验证</text>
+
+        <!-- 订单网关线程 -->
+        <rect x="50" y="220" width="240" height="100" rx="6" fill="#0f172a"/>
+        <rect x="50" y="220" width="240" height="100" rx="6" fill="rgba(52, 211, 153, 0.15)" stroke="#34d399" stroke-width="1"/>
+        <text x="170" y="245" fill="white" font-size="11" font-weight="600" text-anchor="middle">OrderGateway Thread</text>
+        <text x="170" y="262" fill="#34d399" font-size="8" text-anchor="middle">订单处理线程 (多线程)</text>
+        <text x="170" y="280" fill="#fbbf24" font-size="7" text-anchor="middle">• 风控检查: 读 Chronicle Map</text>
+        <text x="170" y="293" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle">• compute 原子冻结资金/持仓</text>
+        <text x="170" y="306" fill="#94a3b8" font-size="7" text-anchor="middle">• 写入 Order Queue</text>
+
+        <!-- 风控服务线程 -->
+        <rect x="50" y="340" width="240" height="90" rx="6" fill="#0f172a"/>
+        <rect x="50" y="340" width="240" height="90" rx="6" fill="rgba(251, 113, 133, 0.15)" stroke="#fb7185" stroke-width="1"/>
+        <text x="170" y="365" fill="white" font-size="11" font-weight="600" text-anchor="middle">RiskControl Thread</text>
+        <text x="170" y="382" fill="#fb7185" font-size="8" text-anchor="middle">风控检查线程 (多线程)</text>
+        <text x="170" y="400" fill="#34d399" font-size="7" text-anchor="middle">• 读 Chronicle Map (多读取者)</text>
+        <text x="170" y="413" fill="#94a3b8" font-size="7" text-anchor="middle">• 资金/持仓充足性检查</text>
+        <text x="170" y="426" fill="#fb7185" font-size="7" font-weight="600" text-anchor="middle">✗ 只读取，不写入</text>
+
+        <!-- ===================== 业务线程区域 ===================== -->
+
+        <!-- 撮合引擎线程 -->
+        <rect x="350" y="60" width="280" height="200" rx="8" fill="rgba(6, 78, 59, 0.2)" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="490" y="85" fill="#34d399" font-size="12" font-weight="600" text-anchor="middle">撮合引擎</text>
+        <text x="490" y="102" fill="#94a3b8" font-size="9" text-anchor="middle">(单线程，无锁设计)</text>
+
+        <rect x="370" y="120" width="240" height="120" rx="6" fill="#0f172a"/>
+        <rect x="370" y="120" width="240" height="120" rx="6" fill="rgba(52, 211, 153, 0.2)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="490" y="145" fill="white" font-size="11" font-weight="600" text-anchor="middle">MatchingEngine Thread</text>
+        <text x="490" y="162" fill="#34d399" font-size="8" text-anchor="middle">撮合线程 (单线程)</text>
+        <text x="490" y="180" fill="#94a3b8" font-size="7" text-anchor="middle">• 从 Order Queue 读取订单</text>
+        <text x="490" y="193" fill="#94a3b8" font-size="7" text-anchor="middle">• 价格优先时间优先撮合</text>
+        <text x="490" y="206" fill="#34d399" font-size="7" text-anchor="middle">• 写入 Trade Queue</text>
+        <text x="490" y="219" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle">✓ 无锁设计，单线程处理</text>
+
+        <!-- ===================== 清算服务区域 ===================== -->
+
+        <rect x="350" y="280" width="280" height="280" rx="8" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="490" y="305" fill="#fbbf24" font-size="12" font-weight="600" text-anchor="middle">清算服务 (N+2 线程)</text>
+        <text x="490" y="322" fill="#94a3b8" font-size="9" text-anchor="middle">(compute 原子操作)</text>
+
+        <!-- TradeReader 线程 -->
+        <rect x="370" y="340" width="240" height="60" rx="6" fill="#0f172a"/>
+        <rect x="370" y="340" width="240" height="60" rx="6" fill="rgba(251, 194, 52, 0.25)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="490" y="362" fill="white" font-size="10" font-weight="600" text-anchor="middle">TradeReader Thread (1)</text>
+        <text x="490" y="377" fill="#fbbf24" font-size="7" text-anchor="middle">从 Trade Queue 读取成交</text>
+        <text x="490" y="392" fill="#94a3b8" font-size="7" text-anchor="middle">分发到内存队列 (非阻塞)</text>
+
+        <!-- ClearingWorker 线程 -->
+        <rect x="370" y="410" width="240" height="70" rx="6" fill="#0f172a"/>
+        <rect x="370" y="410" width="240" height="70" rx="6" fill="rgba(52, 211, 153, 0.2)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="490" y="432" fill="white" font-size="10" font-weight="600" text-anchor="middle">ClearingWorker Thread (N)</text>
+        <text x="490" y="447" fill="#34d399" font-size="7" text-anchor="middle">N = CPU核心数</text>
+        <text x="490" y="462" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle">• compute 原子更新账户/持仓</text>
+        <text x="490" y="475" fill="#94a3b8" font-size="7" text-anchor="middle">• 推送 WebSocket 成交回报</text>
+
+        <!-- CancelProcessor 线程 -->
+        <rect x="370" y="490" width="240" height="60" rx="6" fill="#0f172a"/>
+        <rect x="370" y="490" width="240" height="60" rx="6" fill="rgba(251, 113, 133, 0.15)" stroke="#fb7185" stroke-width="1"/>
+        <text x="490" y="512" fill="white" font-size="10" font-weight="600" text-anchor="middle">CancelProcessor Thread (1)</text>
+        <text x="490" y="527" fill="#fb7185" font-size="7" text-anchor="middle">从 Cancel Queue 读取撤单</text>
+        <text x="490" y="542" fill="#94a3b8" font-size="7" text-anchor="middle">compute 原子解冻资金/持仓</text>
+
+        <!-- ===================== WebSocket 线程区域 ===================== -->
+
+        <rect x="670" y="60" width="280" height="200" rx="8" fill="rgba(136, 19, 55, 0.2)" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="810" y="85" fill="#fb7185" font-size="12" font-weight="600" text-anchor="middle">WebSocket 服务</text>
+        <text x="810" y="102" fill="#94a3b8" font-size="9" text-anchor="middle">(实时推送)</text>
+
+        <rect x="690" y="120" width="240" height="120" rx="6" fill="#0f172a"/>
+        <rect x="690" y="120" width="240" height="120" rx="6" fill="rgba(251, 113, 133, 0.15)" stroke="#fb7185" stroke-width="1"/>
+        <text x="810" y="145" fill="white" font-size="11" font-weight="600" text-anchor="middle">WebSocket-IO-Thread-N</text>
+        <text x="810" y="162" fill="#fb7185" font-size="8" text-anchor="middle">WebSocket IO 线程 (多线程)</text>
+        <text x="810" y="180" fill="#94a3b8" font-size="7" text-anchor="middle">• 接收 WebSocket 连接</text>
+        <text x="810" y="193" fill="#94a3b8" font-size="7" text-anchor="middle">• 推送行情/订单状态</text>
+        <text x="810" y="206" fill="#34d399" font-size="7" text-anchor="middle">• 推送成交回报</text>
+        <text x="810" y="219" fill="#fb7185" font-size="7" font-weight="600" text-anchor="middle">✗ 不访问 Chronicle Map</text>
+
+        <!-- ===================== 异步持久化区域 ===================== -->
+
+        <rect x="670" y="280" width="280" height="200" rx="8" fill="rgba(76, 29, 149, 0.2)" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="810" y="305" fill="#a78bfa" font-size="12" font-weight="600" text-anchor="middle">异步持久化</text>
+        <text x="810" y="322" fill="#94a3b8" font-size="9" text-anchor="middle">(H2 数据库)</text>
+
+        <rect x="690" y="340" width="240" height="120" rx="6" fill="#0f172a"/>
+        <rect x="690" y="340" width="240" height="120" rx="6" fill="rgba(167, 139, 250, 0.15)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="810" y="365" fill="white" font-size="11" font-weight="600" text-anchor="middle">AsyncPersistence Thread</text>
+        <text x="810" y="382" fill="#a78bfa" font-size="8" text-anchor="middle">持久化线程 (单线程)</text>
+        <text x="810" y="400" fill="#94a3b8" font-size="7" text-anchor="middle">• 批量写入 H2 数据库</text>
+        <text x="810" y="413" fill="#fb7185" font-size="7" font-weight="600" text-anchor="middle">• 仅用于历史查询</text>
+        <text x="810" y="426" fill="#fb7185" font-size="7" font-weight="600" text-anchor="middle">✗ 不参与主链路</text>
+        <text x="810" y="439" fill="#94a3b8" font-size="7" text-anchor="middle">• 不访问 Chronicle Map</text>
+
+        <!-- ===================== Chronicle Map 存储区域 ===================== -->
+
+        <rect x="1000" y="60" width="320" height="420" rx="8" fill="rgba(8, 51, 68, 0.3)" stroke="#22d3ee" stroke-width="2"/>
+        <text x="1160" y="85" fill="#22d3ee" font-size="12" font-weight="600" text-anchor="middle">Chronicle Map</text>
+        <text x="1160" y="102" fill="#94a3b8" font-size="9" text-anchor="middle">(内存映射 + 磁盘持久化)</text>
+
+        <!-- accounts.dat -->
+        <rect x="1020" y="120" width="280" height="150" rx="6" fill="#0f172a"/>
+        <rect x="1020" y="120" width="280" height="150" rx="6" fill="rgba(34, 211, 238, 0.1)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="1160" y="145" fill="white" font-size="11" font-weight="600" text-anchor="middle">accounts.dat</text>
+        <text x="1160" y="162" fill="#22d3ee" font-size="8" text-anchor="middle">账户状态存储</text>
+        <text x="1035" y="182" fill="#94a3b8" font-size="7">Key: accountId (Long)</text>
+        <text x="1035" y="197" fill="#94a3b8" font-size="7">Value: AccountState</text>
+        <text x="1035" y="215" fill="#fbbf24" font-size="7">  • balance (总资产)</text>
+        <text x="1035" y="228" fill="#fbbf24" font-size="7">  • available (可用资金)</text>
+        <text x="1035" y="241" fill="#fbbf24" font-size="7">  • frozen (冻结资金)</text>
+        <text x="1035" y="254" fill="#fbbf24" font-size="7">  • margin (占用保证金)</text>
+
+        <!-- positions.dat -->
+        <rect x="1020" y="290" width="280" height="180" rx="6" fill="#0f172a"/>
+        <rect x="1020" y="290" width="280" height="180" rx="6" fill="rgba(251, 194, 52, 0.1)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="1160" y="315" fill="white" font-size="11" font-weight="600" text-anchor="middle">positions.dat</text>
+        <text x="1160" y="332" fill="#fbbf24" font-size="8" text-anchor="middle">持仓状态存储</text>
+        <text x="1035" y="352" fill="#94a3b8" font-size="7">Key: (accountId&lt;&lt;32) | symbolCode</text>
+        <text x="1035" y="367" fill="#94a3b8" font-size="7">Value: PositionState</text>
+        <text x="1035" y="385" fill="#fbbf24" font-size="7">  • quantity (持仓数量)</text>
+        <text x="1035" y="398" fill="#fbbf24" font-size="7">  • available (可用数量)</text>
+        <text x="1035" y="411" fill="#fbbf24" font-size="7">  • frozen (冻结数量)</text>
+        <text x="1035" y="424" fill="#fbbf24" font-size="7">  • avgPrice (成本价)</text>
+
+        <!-- compute 标识 -->
+        <rect x="1020" y="400" width="280" height="70" rx="6" fill="rgba(52, 211, 153, 0.2)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="1160" y="425" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">compute 原子操作</text>
+        <text x="1160" y="442" fill="#94a3b8" font-size="7" text-anchor="middle">Entry 级别锁，多线程安全</text>
+        <text x="1160" y="455" fill="#34d399" font-size="7" font-weight="600" text-anchor="middle">读取-修改-写入原子完成</text>
+
+        <!-- ===================== Chronicle Queue 区域 ===================== -->
+
+        <rect x="1350" y="60" width="320" height="420" rx="8" fill="rgba(251, 146, 60, 0.2)" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="1510" y="85" fill="#fb923c" font-size="12" font-weight="600" text-anchor="middle">Chronicle Queue</text>
+        <text x="1510" y="102" fill="#94a3b8" font-size="9" text-anchor="middle">(零拷贝消息队列)</text>
+
+        <!-- Order Queue -->
+        <rect x="1370" y="120" width="280" height="100" rx="6" fill="#0f172a"/>
+        <rect x="1370" y="120" width="280" height="100" rx="6" fill="rgba(251, 146, 60, 0.15)" stroke="#fb923c" stroke-width="1"/>
+        <text x="1510" y="145" fill="white" font-size="11" font-weight="600" text-anchor="middle">Order Queue</text>
+        <text x="1510" y="162" fill="#fb923c" font-size="8" text-anchor="middle">订单队列</text>
+        <text x="1385" y="182" fill="#94a3b8" font-size="7">• 生产者: OrderGateway</text>
+        <text x="1385" y="195" fill="#94a3b8" font-size="7">• 消费者: MatchingEngine</text>
+        <text x="1385" y="208" fill="#34d399" font-size="7" font-weight="600">• 零拷贝，延迟 &lt;10μs</text>
+
+        <!-- Trade Queue -->
+        <rect x="1370" y="240" width="280" height="100" rx="6" fill="#0f172a"/>
+        <rect x="1370" y="240" width="280" height="100" rx="6" fill="rgba(251, 146, 60, 0.15)" stroke="#fb923c" stroke-width="1"/>
+        <text x="1510" y="265" fill="white" font-size="11" font-weight="600" text-anchor="middle">Trade Queue</text>
+        <text x="1510" y="282" fill="#fb923c" font-size="8" text-anchor="middle">成交队列</text>
+        <text x="1385" y="302" fill="#94a3b8" font-size="7">• 生产者: MatchingEngine</text>
+        <text x="1385" y="315" fill="#94a3b8" font-size="7">• 消费者: ClearingService</text>
+        <text x="1385" y="328" fill="#34d399" font-size="7" font-weight="600">• 多线程消费，compute 更新</text>
+
+        <!-- Market Data Queue -->
+        <rect x="1370" y="360" width="280" height="100" rx="6" fill="#0f172a"/>
+        <rect x="1370" y="360" width="280" height="100" rx="6" fill="rgba(251, 146, 60, 0.15)" stroke="#fb923c" stroke-width="1"/>
+        <text x="1510" y="385" fill="white" font-size="11" font-weight="600" text-anchor="middle">Market Data Queue</text>
+        <text x="1510" y="402" fill="#fb923c" font-size="8" text-anchor="middle">行情队列</text>
+        <text x="1385" y="422" fill="#94a3b8" font-size="7">• 生产者: 行情网关</text>
+        <text x="1385" y="435" fill="#94a3b8" font-size="7">• 消费者: WebSocket 推送</text>
+        <text x="1385" y="448" fill="#34d399" font-size="7" font-weight="600">• 实时行情分发</text>
+
+        <!-- ===================== 数据流箭头 ===================== -->
+
+        <!-- OrderGateway → Order Queue -->
+        <line x1="290" y1="270" x2="1368" y2="170" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <text x="800" y="200" fill="#34d399" font-size="8" font-weight="600">① 写入订单</text>
+
+        <!-- Order Queue → MatchingEngine -->
+        <line x1="1370" y1="170" x2="612" y2="180" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+        <text x="1000" y="160" fill="#fb923c" font-size="8">② 读取订单</text>
+
+        <!-- MatchingEngine → Trade Queue -->
+        <line x1="610" y1="200" x2="1368" y2="290" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <text x="950" y="230" fill="#34d399" font-size="8" font-weight="600">③ 写入成交</text>
+
+        <!-- Trade Queue → ClearingService -->
+        <line x1="1370" y1="290" x2="612" y2="400" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+        <text x="1000" y="320" fill="#fb923c" font-size="8">④ 读取成交</text>
+
+        <!-- ClearingService → Chronicle Map (compute) -->
+        <line x1="610" y1="400" x2="1018" y2="300" stroke="#fbbf24" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+        <text x="800" y="370" fill="#fbbf24" font-size="8" font-weight="600">⑤ compute 原子更新</text>
+
+        <!-- OrderGateway → Chronicle Map (compute) -->
+        <line x1="290" y1="290" x2="1018" y2="200" stroke="#34d399" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+        <text x="600" y="280" fill="#34d399" font-size="8" font-weight="600">⑥ compute 原子冻结</text>
+
+        <!-- RiskControl → Chronicle Map (read) -->
+        <line x1="290" y1="385" x2="1018" y2="250" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrow-rose)"/>
+        <text x="600" y="340" fill="#fb7185" font-size="8">⑦ 读取检查</text>
+
+        <!-- ===================== 图例 ===================== -->
+        <rect x="30" y="500" width="500" height="180" rx="6" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="50" y="525" fill="white" font-size="11" font-weight="600">图例说明</text>
+
+        <!-- 实线箭头 -->
+        <line x1="50" y1="550" x2="100" y2="550" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <text x="115" y="554" fill="#94a3b8" font-size="8">数据写入 (compute 原子操作)</text>
+
+        <line x1="50" y1="575" x2="100" y2="575" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+        <text x="115" y="579" fill="#94a3b8" font-size="8">队列读取</text>
+
+        <line x1="50" y1="600" x2="100" y2="600" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrow-rose)"/>
+        <text x="115" y="604" fill="#94a3b8" font-size="8">只读取，不写入</text>
+
+        <!-- 线程类型 -->
+        <rect x="280" y="540" width="15" height="15" rx="2" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="305" y="552" fill="#94a3b8" font-size="8">IO 线程 (多线程)</text>
+
+        <rect x="280" y="565" width="15" height="15" rx="2" fill="rgba(52, 211, 153, 0.3)" stroke="#34d399" stroke-width="1"/>
+        <text x="305" y="577" fill="#94a3b8" font-size="8">业务线程 (多线程 + compute)</text>
+
+        <rect x="280" y="590" width="15" height="15" rx="2" fill="rgba(251, 194, 52, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="305" y="602" fill="#94a3b8" font-size="8">清算线程 (多线程 + compute)</text>
+
+        <rect x="280" y="615" width="15" height="15" rx="2" fill="rgba(167, 139, 250, 0.3)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="305" y="627" fill="#94a3b8" font-size="8">异步线程 (不访问 Chronicle Map)</text>
+
+        <!-- ===================== 关键设计说明 ===================== -->
+        <rect x="550" y="500" width="600" height="180" rx="6" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="570" y="525" fill="white" font-size="11" font-weight="600">compute 原子操作保证</text>
+
+        <text x="570" y="550" fill="#22d3ee" font-size="9" font-weight="600">原理:</text>
+        <text x="570" y="567" fill="#94a3b8" font-size="8">• Entry 级别锁: 对单个 key 的 entry 加锁</text>
+        <text x="570" y="582" fill="#94a3b8" font-size="8">• 原子操作: 读取-修改-写入在同一个锁保护下完成</text>
+        <text x="570" y="597" fill="#94a3b8" font-size="8">• 并发安全: 不同 key 可并发执行，同 key 串行化</text>
+
+        <text x="570" y="620" fill="#34d399" font-size="9" font-weight="600">优势:</text>
+        <text x="570" y="637" fill="#94a3b8" font-size="8">• 多线程并发: OrderGateway 和 ClearingService 可多线程运行</text>
+        <text x="570" y="652" fill="#94a3b8" font-size="8">• 数据安全: 避免多线程覆盖，保证一致性</text>
+        <text x="570" y="667" fill="#94a3b8" font-size="8">• 高吞吐: Entry 级别锁，不同账户并发执行</text>
+
+        <!-- ===================== 性能指标 ===================== -->
+        <rect x="1170" y="500" width="500" height="180" rx="6" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1190" y="525" fill="white" font-size="11" font-weight="600">性能指标</text>
+
+        <text x="1190" y="550" fill="#fbbf24" font-size="9" font-weight="600">延迟:</text>
+        <text x="1190" y="567" fill="#94a3b8" font-size="8">• compute 操作: ~1-5μs (Entry 锁)</text>
+        <text x="1190" y="582" fill="#94a3b8" font-size="8">• 队列写入: ~10μs (零拷贝)</text>
+        <text x="1190" y="597" fill="#94a3b8" font-size="8">• 端到端: 4-8ms (P99&lt;15ms)</text>
+
+        <text x="1190" y="620" fill="#34d399" font-size="9" font-weight="600">吞吐量:</text>
+        <text x="1190" y="637" fill="#94a3b8" font-size="8">• OrderGateway: 多线程并发处理</text>
+        <text x="1190" y="652" fill="#94a3b8" font-size="8">• ClearingService: 多线程并发清算</text>
+        <text x="1190" y="667" fill="#34d399" font-size="8" font-weight="600">• 系统总吞吐: &gt;100,000 TPS</text>
+
+      </svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>IO 线程 (Tomcat/WebSocket)</h3>
+        </div>
+        <ul>
+          <li>• HTTP-IO-Thread: 接收请求，解析参数</li>
+          <li>• WebSocket-IO-Thread: 连接管理，消息推送</li>
+          <li>• 多线程并发，无状态</li>
+          <li>• 不直接访问 Chronicle Map</li>
+          <li>• 请求转发给业务线程处理</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>订单网关线程 (OrderGateway)</h3>
+        </div>
+        <ul>
+          <li>• 多线程并发处理订单请求</li>
+          <li>• 风控检查: 读 Chronicle Map</li>
+          <li>• compute 原子冻结资金/持仓</li>
+          <li>• 冻结成功写入 Order Queue</li>
+          <li>• Entry 级别锁，不同账户并发</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>清算服务线程 (N+2)</h3>
+        </div>
+        <ul>
+          <li>• TradeReader (1): 读 Trade Queue，分发到内存队列</li>
+          <li>• ClearingWorker (N): N=CPU核心数，compute 原子更新</li>
+          <li>• CancelProcessor (1): 处理撤单解冻</li>
+          <li>• Entry 级别锁，不同账户并发执行</li>
+          <li>• 推送 WebSocket 成交回报</li>
+          <li>• Queue Index 持久化到 progress.dat</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Queue Index 持久化</h3>
+        </div>
+        <ul>
+          <li>• 存储位置: progress.dat (Chronicle Map)</li>
+          <li>• Key: "trade_queue_index"</li>
+          <li>• Value: 已处理的最大 index</li>
+          <li>• 更新时机: 清算成功后</li>
+          <li>• 重启恢复: 从 index+1 开始</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>幂等设计 (TradeId 去重)</h3>
+        </div>
+        <ul>
+          <li>• 存储位置: processed_trades.dat</li>
+          <li>• Key: tradeId (Long)</li>
+          <li>• putIfAbsent 原子检查+写入</li>
+          <li>• 防止重复清算</li>
+          <li>• 保证数据一致性</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>风控服务线程 (RiskControl)</h3>
+        </div>
+        <ul>
+          <li>• 多线程并发风控检查</li>
+          <li>• 只读取 Chronicle Map</li>
+          <li>• 资金充足性检查 O(1)</li>
+          <li>• 持仓限额检查 O(1)</li>
+          <li>• 不写入，多读取者安全</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>异步持久化线程</h3>
+        </div>
+        <ul>
+          <li>• 单线程批量写入 H2</li>
+          <li>• 仅用于历史查询</li>
+          <li>• 不参与主链路</li>
+          <li>• 不访问 Chronicle Map</li>
+          <li>• 不影响交易性能</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot orange"></div>
+          <h3>撮合引擎线程</h3>
+        </div>
+        <ul>
+          <li>• 单线程处理，无锁设计</li>
+          <li>• 从 Order Queue 读取订单</li>
+          <li>• 价格优先时间优先撮合</li>
+          <li>• 写入 Trade Queue</li>
+          <li>• 不访问 Chronicle Map</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="footer">
+      A股交易系统 - 线程模型图 · 2026-05-17 · compute 原子操作 + Chronicle Map + 多线程并发
+    </p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) { btn.textContent = '✗ Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'thread-model.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) { btn.textContent = '✗ Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('thread-model.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) { btn.textContent = '✗ Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>线程工作模型数据流图 V2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #fff;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+        .diagram-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 线程池区域 */
+        .thread-pool {
+            margin-bottom: 40px;
+            border: 2px solid;
+            border-radius: 15px;
+            padding: 20px;
+            position: relative;
+        }
+        .pool-io { border-color: #4CAF50; background: rgba(76, 175, 80, 0.1); }
+        .pool-business { border-color: #2196F3; background: rgba(33, 150, 243, 0.1); }
+        .pool-matching { border-color: #FF9800; background: rgba(255, 152, 0, 0.1); }
+        .pool-clearing { border-color: #E91E63; background: rgba(233, 30, 99, 0.1); }
+        .pool-async { border-color: #9C27B0; background: rgba(156, 39, 176, 0.1); }
+
+        .pool-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding: 5px 15px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .pool-io .pool-title { background: #4CAF50; }
+        .pool-business .pool-title { background: #2196F3; }
+        .pool-matching .pool-title { background: #FF9800; }
+        .pool-clearing .pool-title { background: #E91E63; }
+        .pool-async .pool-title { background: #9C27B0; }
+
+        /* 线程节点 */
+        .thread-row {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        .thread-node {
+            background: linear-gradient(145deg, #2a2a4a, #1a1a3a);
+            border: 2px solid #00d4ff;
+            border-radius: 10px;
+            padding: 15px 20px;
+            min-width: 180px;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
+        }
+        .thread-node.active {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2); }
+            50% { box-shadow: 0 4px 25px rgba(0, 212, 255, 0.5); }
+        }
+        .thread-name {
+            font-weight: bold;
+            color: #00d4ff;
+            font-size: 14px;
+        }
+        .thread-count {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .thread-action {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #333;
+        }
+
+        /* 数据存储节点 */
+        .storage-node {
+            background: linear-gradient(145deg, #1a3a1a, #0a2a0a);
+            border: 2px solid #4CAF50;
+            border-radius: 10px;
+            padding: 12px 18px;
+            min-width: 150px;
+            text-align: center;
+            position: relative;
+        }
+        .storage-node.memory {
+            background: linear-gradient(145deg, #3a2a1a, #2a1a0a);
+            border-color: #FF9800;
+        }
+        .storage-node.db {
+            background: linear-gradient(145deg, #1a2a3a, #0a1a2a);
+            border-color: #2196F3;
+        }
+        .storage-name {
+            font-weight: bold;
+            color: #4CAF50;
+            font-size: 13px;
+        }
+        .storage-node.memory .storage-name { color: #FF9800; }
+        .storage-node.db .storage-name { color: #2196F3; }
+        .storage-detail {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        /* 箭头和连接线 */
+        .arrow {
+            display: flex;
+            align-items: center;
+            color: #00d4ff;
+            font-size: 24px;
+            padding: 0 10px;
+        }
+        .arrow-label {
+            font-size: 10px;
+            color: #888;
+            margin: 0 5px;
+            max-width: 80px;
+            text-align: center;
+        }
+
+        /* 数据流区域 */
+        .flow-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+        }
+        .flow-title {
+            font-size: 16px;
+            color: #ffd700;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+
+        /* 详细流程图 */
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            border-left: 3px solid #00d4ff;
+        }
+        .step-num {
+            background: #00d4ff;
+            color: #000;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .step-content {
+            flex: 1;
+        }
+        .step-thread {
+            color: #00d4ff;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        .step-action {
+            color: #aaa;
+            font-size: 12px;
+            margin-top: 3px;
+        }
+        .step-storage {
+            color: #4CAF50;
+            font-size: 11px;
+            margin-top: 3px;
+        }
+
+        /* Index 持久化说明 */
+        .index-box {
+            background: linear-gradient(145deg, #2a1a3a, #1a0a2a);
+            border: 2px solid #E91E63;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .index-title {
+            color: #E91E63;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .index-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            font-size: 12px;
+        }
+        .index-key {
+            background: #333;
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: #ffd700;
+            font-family: monospace;
+        }
+
+        /* 重要变更标记 */
+        .change-box {
+            background: linear-gradient(145deg, #3a2a1a, #2a1a0a);
+            border: 2px solid #FF9800;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .change-title {
+            color: #FF9800;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        /* 图例 */
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 1200px) {
+            .thread-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .arrow {
+                transform: rotate(90deg);
+                padding: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🧵 线程工作模型数据流图 V2</h1>
+
+    <div class="diagram-container">
+
+        <!-- ==================== 重要变更说明 ==================== -->
+        <div class="change-box">
+            <div class="change-title">⚠️ V2 重要变更</div>
+            <div class="index-item">
+                <span>1. <strong>Order Queue 和 Cancel Queue 合并</strong> - 统一为 Order Queue，包含 NEW_ORDER 和 CANCEL_ORDER 两种类型</span>
+            </div>
+            <div class="index-item">
+                <span>2. <strong>ClearingWorker 按 AccountId 分片</strong> - 同一账户的操作在同一线程串行化，减少 compute 调用</span>
+            </div>
+            <div class="index-item">
+                <span>3. <strong>MatchingEngine 支持多 Symbol</strong> - 单线程处理所有 Symbol，每个 Symbol 独立 OrderBook</span>
+            </div>
+            <div class="index-item">
+                <span>4. <strong>OrderBook 持久化到 Chronicle Map</strong> - orderbook.dat 存储所有挂单状态，重启后恢复</span>
+            </div>
+        </div>
+
+        <!-- ==================== 流程 1: HTTP请求 → 订单处理 ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">📊 流程 1: HTTP请求 → 订单处理 (同步路径)</div>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread (8-32线程)</div>
+                        <div class="step-action">接收 HTTP POST /api/orders 请求</div>
+                        <div class="step-storage">不访问 Chronicle Map</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
+                        <div class="step-action">参数校验 → 风控检查 (读 Chronicle Map)</div>
+                        <div class="step-storage">读取: accounts.dat, positions.dat</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
+                        <div class="step-action">compute 原子冻结资金/持仓</div>
+                        <div class="step-storage">写入: accounts.dat, positions.dat (compute原子操作)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
+                        <div class="step-action">写入订单到 Order Queue (类型: NEW_ORDER)</div>
+                        <div class="step-storage">写入: order_queue.dat (Chronicle Queue)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
+                        <div class="step-action">同步返回 OrderResult 给客户端</div>
+                        <div class="step-storage">响应: orderId, status="PENDING"</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 流程 2: 撤单请求 ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">❌ 流程 2: 撤单请求 (写入 Order Queue)</div>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread</div>
+                        <div class="step-action">接收 HTTP DELETE /api/orders/{orderId}</div>
+                        <div class="step-storage">不访问 Chronicle Map</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread</div>
+                        <div class="step-action">写入撤单请求到 Order Queue (类型: CANCEL_ORDER)</div>
+                        <div class="step-storage">写入: order_queue.dat (Chronicle Queue)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-thread">Tomcat HTTP-IO Thread</div>
+                        <div class="step-action">同步返回 CancelResult (已提交)</div>
+                        <div class="step-storage">响应: orderId, status="CANCEL_PENDING"</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">✅ 统一的 Order Queue 设计</div>
+                <div class="index-item">
+                    <span>Order Queue 包含两种事件类型: NEW_ORDER 和 CANCEL_ORDER</span>
+                </div>
+                <div class="index-item">
+                    <span>MatchingEngine 统一处理，保证顺序</span>
+                </div>
+                <div class="index-item">
+                    <span>无需独立的 Cancel Queue 和 CancelProcessor 线程</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 流程 3: 订单 → 撮合 (多 Symbol) ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">⚡ 流程 3: 订单 → 撮合 (多 Symbol 支持)</div>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread (单线程)</div>
+                        <div class="step-action">从 Order Queue 零拷贝读取 OrderEvent</div>
+                        <div class="step-storage">读取: order_queue.dat (ExcerptTailer)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread (同一线程)</div>
+                        <div class="step-action">根据 symbol 获取对应的 OrderBook</div>
+                        <div class="step-storage">内存: Map&lt;String, OrderBook&gt; orderBooks</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">3a</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread (NEW_ORDER)</div>
+                        <div class="step-action">写入 orderbook.dat → 加入 OrderBook → 执行撮合</div>
+                        <div class="step-storage">写入: orderbook.dat (PENDING状态) → 内存 OrderBook</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">3b</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread (CANCEL_ORDER)</div>
+                        <div class="step-action">从 OrderBook 移除 → 更新 orderbook.dat 状态</div>
+                        <div class="step-storage">写入: orderbook.dat (CANCEL状态) → 生成 CancelEvent</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread (同一线程)</div>
+                        <div class="step-action">生成 TradeEvent / CancelEvent，写入 Trade Queue</div>
+                        <div class="step-storage">写入: trade_queue.dat (Chronicle Queue)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread (同一线程)</div>
+                        <div class="step-action">更新 orderbook.dat (remainingQty, status)</div>
+                        <div class="step-storage">写入: orderbook.dat (compute 原子更新)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">📊 多 Symbol OrderBook 结构</div>
+                <div class="index-item">
+                    <span class="index-key">symbol → OrderBook</span>
+                    <span>每个 Symbol 独立的 OrderBook，内存 TreeMap 结构</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">买单: 价格降序</span>
+                    <span>最高价优先成交</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">卖单: 价格升序</span>
+                    <span>最低价优先成交</span>
+                </div>
+                <div class="index-item">
+                    <span>撮合算法: 价格优先、时间优先</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 流程 4: 成交 → 清算 (单线程顺序处理) ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">💰 流程 4: 成交 → 清算 (单线程顺序处理)</div>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (单线程)</div>
+                        <div class="step-action">从 Trade Queue 读取 TradeEvent</div>
+                        <div class="step-storage">读取: trade_queue.dat (ExcerptTailer)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-action">putIfAbsent 幂等检查 (防止重复清算)</div>
+                        <div class="step-storage">原子操作: processed_trades.dat (putIfAbsent)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-action">compute 原子更新买方账户/持仓</div>
+                        <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-action">compute 原子更新卖方账户/持仓</div>
+                        <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-action">更新 Index (单线程，直接赋值)</div>
+                        <div class="step-storage">写入: progress.dat (直接 setIndex)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">6</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-action">推送 WebSocket 成交通知</div>
+                        <div class="step-storage">写入: WebSocket Channel (Netty异步发送)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">7</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-action">继续处理下一个成交 (循环)</div>
+                        <div class="step-storage">无内存队列，直接从 Trade Queue 读取</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">🔑 单线程清算优势</div>
+                <div class="index-item">
+                    <span class="index-key">Index 顺序更新</span>
+                    <span>无冲突，无需滑动窗口</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">设计简单</span>
+                    <span>无内存队列，无多线程同步问题</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">重启恢复简单</span>
+                    <span>从 Index + 1 开始读取即可</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">性能足够</span>
+                    <span>每笔清算 ~5-10μs，10万 TPS</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 流程 5: 撤单解冻 (MatchingEngine 处理) ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">🔓 流程 5: 撤单解冻 (MatchingEngine 处理)</div>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread</div>
+                        <div class="step-action">从 Order Queue 读取 CANCEL_ORDER 类型</div>
+                        <div class="step-storage">读取: order_queue.dat</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread</div>
+                        <div class="step-action">从 OrderBook 移除订单，更新 orderbook.dat</div>
+                        <div class="step-storage">写入: orderbook.dat (status=CANCEL)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread</div>
+                        <div class="step-action">生成 CancelEvent，写入 Trade Queue</div>
+                        <div class="step-storage">写入: trade_queue.dat</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (单线程)</div>
+                        <div class="step-action">读取 CancelEvent，compute 原子解冻资金/持仓</div>
+                        <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread</div>
+                        <div class="step-action">推送 WebSocket 撤单结果</div>
+                        <div class="step-storage">写入: WebSocket Channel</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 流程 6: JVM 重启恢复 ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">🔄 JVM 重启恢复流程</div>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-thread">Main Thread (启动线程)</div>
+                        <div class="step-action">加载所有 Chronicle Map 文件</div>
+                        <div class="step-storage">读取: accounts.dat, positions.dat, orderbook.dat, progress.dat, processed_trades.dat</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-thread">Main Thread</div>
+                        <div class="step-action">从 orderbook.dat 恢复所有 Symbol 的 OrderBook</div>
+                        <div class="step-storage">读取: orderbook.dat → 重建 Map&lt;String, OrderBook&gt;</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-thread">Main Thread</div>
+                        <div class="step-action">读取各队列的 Index</div>
+                        <div class="step-storage">读取: progress.dat.get("order_queue_index"), progress.dat.get("trade_queue_index")</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-thread">MatchingEngine Thread</div>
+                        <div class="step-action">从 order_queue_index + 1 开始读取</div>
+                        <div class="step-storage">tailer.moveToIndex(orderIndex + 1)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <div class="step-thread">TradeReader Thread</div>
+                        <div class="step-action">从 trade_queue_index + 1 开始读取</div>
+                        <div class="step-storage">tailer.moveToIndex(tradeIndex + 1)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">6</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread</div>
+                        <div class="step-action">putIfAbsent 幂等检查 (防止重复清算)</div>
+                        <div class="step-storage">如果已处理，跳过；否则执行清算</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">7</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread</div>
+                        <div class="step-action">标记 Index 已处理，滑动窗口向前移动</div>
+                        <div class="step-storage">更新: progress.dat (BitSet + windowStart)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">📊 OrderBook 恢复流程</div>
+                <div class="index-item">
+                    <span class="index-key">orderbook.dat 结构</span>
+                    <span>Key: (symbolCode << 32) | orderId, Value: OrderState</span>
+                </div>
+                <div class="index-item">
+                    <span>恢复时遍历所有 OrderState，按 symbol 分组重建 OrderBook</span>
+                </div>
+                <div class="index-item">
+                    <span>只恢复 PENDING 和 PARTIAL_FILLED 状态的订单</span>
+                </div>
+                <div class="index-item">
+                    <span>FILLED 和 CANCEL 状态的订单跳过</span>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">🔒 防重复清算保证 (单线程)</div>
+                <div class="index-item">
+                    <span class="index-key">tradeId 去重</span>
+                    <span>putIfAbsent 在清算前执行，防止重复清算</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">Index 顺序更新</span>
+                    <span>单线程保证 Index 顺序，无需滑动窗口</span>
+                </div>
+                <div class="index-item">
+                    <span>重启后可能重复读取，但不会重复处理</span>
+                </div>
+                <div class="index-item">
+                    <span>putIfAbsent 在清算前执行，保证原子性</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 线程池配置汇总 ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">📋 线程池配置汇总 (8核CPU) - 单线程清算版</div>
+
+            <div class="thread-pool pool-io">
+                <div class="pool-title">IO 线程池</div>
+                <div class="thread-row">
+                    <div class="thread-node active">
+                        <div class="thread-name">Tomcat HTTP-IO</div>
+                        <div class="thread-count">8-32 线程 (动态)</div>
+                        <div class="thread-action">接收HTTP请求<br>执行订单处理</div>
+                    </div>
+                    <div class="thread-node">
+                        <div class="thread-name">WebSocket EventLoop</div>
+                        <div class="thread-count">8 线程</div>
+                        <div class="thread-action">WebSocket推送<br>不访问 Chronicle Map</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="thread-pool pool-matching">
+                <div class="pool-title">撮合线程</div>
+                <div class="thread-row">
+                    <div class="thread-node active">
+                        <div class="thread-name">MatchingEngine</div>
+                        <div class="thread-count">1 线程</div>
+                        <div class="thread-action">多 Symbol 撮合<br>处理 NEW/CANCEL<br>更新 orderbook.dat</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="thread-pool pool-clearing">
+                <div class="pool-title">清算线程 (单线程)</div>
+                <div class="thread-row">
+                    <div class="thread-node active">
+                        <div class="thread-name">ClearingWorker</div>
+                        <div class="thread-count">1 线程</div>
+                        <div class="thread-action">单线程顺序清算<br>compute 原子更新<br>Index 顺序更新</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="thread-pool pool-async">
+                <div class="pool-title">异步线程</div>
+                <div class="thread-row">
+                    <div class="thread-node">
+                        <div class="thread-name">AsyncPersistence</div>
+                        <div class="thread-count">1 线程</div>
+                        <div class="thread-action">H2 批量写入<br>定时刷新</div>
+                    </div>
+                    <div class="thread-node">
+                        <div class="thread-name">MarketData</div>
+                        <div class="thread-count">1 线程</div>
+                        <div class="thread-action">行情接收<br>新浪财经爬取</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">📊 线程总数统计 (单线程清算版)</div>
+                <div class="index-item">
+                    <span>Tomcat HTTP: 8-32 + WebSocket: 8 + Matching: 1 + Clearing: 1 + Async: 2 = 20-44 线程</span>
+                </div>
+                <div class="index-item">
+                    <span>清算改为单线程，设计简单可靠，性能足够 (10万 TPS)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== Chronicle Map 存储结构 ==================== -->
+        <div class="flow-section">
+            <div class="flow-title">💾 Chronicle Map 存储结构 (V2)</div>
+
+            <div class="index-box">
+                <div class="index-title">账户/持仓存储</div>
+                <div class="index-item">
+                    <span class="index-key">accounts.dat</span>
+                    <span>Key: accountId, Value: AccountState (balance, available, frozen, margin)</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">positions.dat</span>
+                    <span>Key: (accountId << 32) | symbolCode, Value: PositionState</span>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">订单簿存储 (新增)</div>
+                <div class="index-item">
+                    <span class="index-key">orderbook.dat</span>
+                    <span>Key: (symbolCode << 32) | orderId, Value: OrderState</span>
+                </div>
+                <div class="index-item">
+                    <span>OrderState: orderId, symbol, price, quantity, remainingQty, side, accountId, status, createTime, updateTime</span>
+                </div>
+                <div class="index-item">
+                    <span>status: PENDING / PARTIAL_FILLED / FILLED / CANCEL</span>
+                </div>
+            </div>
+
+            <div class="index-box">
+                <div class="index-title">进度/幂等存储</div>
+                <div class="index-item">
+                    <span class="index-key">progress.dat</span>
+                    <span>Key: "order_queue_index" / "trade_queue_index" / "persistence_index"</span>
+                </div>
+                <div class="index-item">
+                    <span class="index-key">processed_trades.dat</span>
+                    <span>Key: tradeId, Value: ProcessedTradeState (幂等去重)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图例 -->
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4CAF50;"></div>
+                <span>IO 线程池</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FF9800;"></div>
+                <span>撮合线程</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #E91E63;"></div>
+                <span>清算线程池</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #9C27B0;"></div>
+                <span>异步线程</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4CAF50; border: 2px solid #fff;"></div>
+                <span>Chronicle Map (持久化)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FF9800; border: 2px solid #fff;"></div>
+                <span>内存数据结构</span>
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>

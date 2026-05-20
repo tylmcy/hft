@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP REST API & WebSocket 接口定义</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #fff;
+        }
+        h1 { text-align: center; margin-bottom: 30px; color: #00d4ff; }
+        h2 { color: #ffd700; margin: 20px 0 15px 0; padding-bottom: 10px; border-bottom: 1px solid #333; }
+        h3 { color: #22d3ee; margin: 15px 0 10px 0; }
+
+        .container { max-width: 1400px; margin: 0 auto; }
+        .section { background: rgba(255, 255, 255, 0.05); border-radius: 15px; padding: 25px; margin-bottom: 25px; }
+
+        .api-card {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #22d3ee;
+        }
+        .api-card.post { border-left-color: #34d399; }
+        .api-card.get { border-left-color: #22d3ee; }
+        .api-card.delete { border-left-color: #fb7185; }
+        .api-card.put { border-left-color: #fbbf24; }
+
+        .api-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .method {
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .method.post { background: #34d399; color: #000; }
+        .method.get { background: #22d3ee; color: #000; }
+        .method.delete { background: #fb7185; color: #000; }
+        .method.put { background: #fbbf24; color: #000; }
+        .endpoint { font-family: monospace; font-size: 14px; color: #fff; }
+        .api-desc { color: #94a3b8; font-size: 13px; margin-bottom: 15px; }
+
+        .code-block {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .code-block .key { color: #fbbf24; }
+        .code-block .string { color: #34d399; }
+        .code-block .number { color: #fb923c; }
+        .code-block .comment { color: #64748b; }
+
+        .flow-section {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        .flow-title { color: #ffd700; font-size: 18px; margin-bottom: 20px; }
+        .flow-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid #22d3ee;
+        }
+        .step-num {
+            background: #22d3ee;
+            color: #000;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .step-content { flex: 1; }
+        .step-api { color: #22d3ee; font-family: monospace; font-size: 13px; }
+        .step-desc { color: #94a3b8; font-size: 12px; margin-top: 5px; }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-right: 5px;
+        }
+        .tag.auth { background: #a78bfa; color: #000; }
+        .tag.order { background: #34d399; color: #000; }
+        .tag.account { background: #22d3ee; color: #000; }
+        .tag.market { background: #fbbf24; color: #000; }
+        .tag.history { background: #fb923c; color: #000; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+        th { background: rgba(34, 211, 238, 0.1); color: #22d3ee; }
+        td { color: #94a3b8; font-size: 12px; }
+        td:first-child { color: #fbbf24; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>📡 HTTP REST API & WebSocket 接口定义</h1>
+
+    <div class="container">
+
+        <!-- ==================== 接口概览 ==================== -->
+        <div class="section">
+            <h2>📋 接口概览</h2>
+            <table>
+                <tr>
+                    <th>模块</th>
+                    <th>接口</th>
+                    <th>方法</th>
+                    <th>说明</th>
+                    <th>前端组件</th>
+                </tr>
+                <tr>
+                    <td><span class="tag auth">认证</span></td>
+                    <td>/api/auth/login</td>
+                    <td>POST</td>
+                    <td>用户登录</td>
+                    <td>LoginForm.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag auth">认证</span></td>
+                    <td>/api/auth/logout</td>
+                    <td>POST</td>
+                    <td>用户登出</td>
+                    <td>Header</td>
+                </tr>
+                <tr>
+                    <td><span class="tag account">账户</span></td>
+                    <td>/api/account/info</td>
+                    <td>GET</td>
+                    <td>账户信息</td>
+                    <td>AccountBar.tsx, AccountPanel.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag account">账户</span></td>
+                    <td>/api/account/positions</td>
+                    <td>GET</td>
+                    <td>持仓列表</td>
+                    <td>AccountPanel.tsx, 持仓管理</td>
+                </tr>
+                <tr>
+                    <td><span class="tag order">订单</span></td>
+                    <td>/api/orders</td>
+                    <td>POST</td>
+                    <td>下单</td>
+                    <td>OrderPanel.tsx, QuickOrder.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag order">订单</span></td>
+                    <td>/api/orders/{orderId}</td>
+                    <td>DELETE</td>
+                    <td>撤单</td>
+                    <td>OrderTable.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag order">订单</span></td>
+                    <td>/api/orders/active</td>
+                    <td>GET</td>
+                    <td>当前委托</td>
+                    <td>OrderTable.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag history">历史</span></td>
+                    <td>/api/trades</td>
+                    <td>GET</td>
+                    <td>历史成交</td>
+                    <td>历史成交 Tab</td>
+                </tr>
+                <tr>
+                    <td><span class="tag history">历史</span></td>
+                    <td>/api/account/cashflow</td>
+                    <td>GET</td>
+                    <td>资金流水</td>
+                    <td>资金流水 Tab</td>
+                </tr>
+                <tr>
+                    <td><span class="tag market">行情</span></td>
+                    <td>/api/market/symbols</td>
+                    <td>GET</td>
+                    <td>股票列表</td>
+                    <td>MarketList.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag market">行情</span></td>
+                    <td>/api/market/watchlist</td>
+                    <td>GET</td>
+                    <td>自选股列表</td>
+                    <td>MarketList.tsx (自选股)</td>
+                </tr>
+                <tr>
+                    <td><span class="tag market">行情</span></td>
+                    <td>/api/market/watchlist</td>
+                    <td>POST</td>
+                    <td>添加自选股</td>
+                    <td>MarketList.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag market">行情</span></td>
+                    <td>/api/market/watchlist/{symbol}</td>
+                    <td>DELETE</td>
+                    <td>删除自选股</td>
+                    <td>MarketList.tsx</td>
+                </tr>
+                <tr>
+                    <td><span class="tag" style="background: #a78bfa; color: #000;">WebSocket</span></td>
+                    <td>/ws</td>
+                    <td>WS</td>
+                    <td>WebSocket 连接</td>
+                    <td>全局实时推送</td>
+                </tr>
+                <tr>
+                    <td><span class="tag" style="background: #a78bfa; color: #000;">WebSocket</span></td>
+                    <td>subscribe</td>
+                    <td>SUB</td>
+                    <td>订阅行情/订单/成交</td>
+                    <td>行情组件、订单表格</td>
+                </tr>
+                <tr>
+                    <td><span class="tag" style="background: #a78bfa; color: #000;">WebSocket</span></td>
+                    <td>unsubscribe</td>
+                    <td>UNSUB</td>
+                    <td>取消订阅</td>
+                    <td>切换股票时</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- ==================== 认证模块 ==================== -->
+        <div class="section">
+            <h2>🔐 认证模块</h2>
+
+            <div class="api-card post">
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="endpoint">/api/auth/login</span>
+                    <span class="tag auth">认证</span>
+                </div>
+                <div class="api-desc">用户登录，返回 JWT Token</div>
+
+                <h3>请求参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"username"</span>: <span class="string">"string"</span>,     <span class="comment">// 用户名</span>
+  <span class="string">"password"</span>: <span class="string">"string"</span>      <span class="comment">// 密码</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"token"</span>: <span class="string">"eyJhbGciOiJIUzI1NiIs..."</span>,  <span class="comment">// JWT Token</span>
+    <span class="string">"expireTime"</span>: <span class="number">1716307200000</span>,          <span class="comment">// 过期时间戳</span>
+    <span class="string">"accountId"</span>: <span class="number">10001</span>,                  <span class="comment">// 账户ID</span>
+    <span class="string">"username"</span>: <span class="string">"trader01"</span>               <span class="comment">// 用户名</span>
+  <span class="key">}
+}</span>
+                </div>
+            </div>
+
+            <div class="api-card post">
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="endpoint">/api/auth/logout</span>
+                    <span class="tag auth">认证</span>
+                </div>
+                <div class="api-desc">用户登出，清除 Token</div>
+
+                <h3>请求头</h3>
+                <div class="code-block">
+<span class="string">Authorization</span>: Bearer <span class="string">&lt;token&gt;</span>
+                </div>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>
+<span class="key">}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 账户模块 ==================== -->
+        <div class="section">
+            <h2>💰 账户模块</h2>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint">/api/account/info</span>
+                    <span class="tag account">账户</span>
+                </div>
+                <div class="api-desc">获取账户资金信息，用于导航栏 AccountBar 和账户详情面板</div>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"accountId"</span>: <span class="number">10001</span>,
+    <span class="string">"totalAsset"</span>: <span class="number">123456700</span>,      <span class="comment">// 总资产 (分)</span>
+    <span class="string">"marketValue"</span>: <span class="number">78901200</span>,       <span class="comment">// 持仓市值 (分)</span>
+    <span class="string">"balance"</span>: <span class="number">123456700</span>,          <span class="comment">// 总资金 (分)</span>
+    <span class="string">"available"</span>: <span class="number">56789000</span>,          <span class="comment">// 可用资金 (分)</span>
+    <span class="string">"frozen"</span>: <span class="number">100000</span>,              <span class="comment">// 冻结资金 (分)</span>
+    <span class="string">"margin"</span>: <span class="number">45678900</span>,            <span class="comment">// 占用保证金 (分)</span>
+    <span class="string">"riskLevel"</span>: <span class="number">45.6</span>,             <span class="comment">// 风险度 (%)</span>
+    <span class="string">"unrealizedPnl"</span>: <span class="number">1234500</span>,        <span class="comment">// 浮动盈亏 (分)</span>
+    <span class="string">"unrealizedPnlRatio"</span>: <span class="number">1.23</span>,     <span class="comment">// 浮盈比例 (%)</span>
+    <span class="string">"initialEquity"</span>: <span class="number">120000000</span>,     <span class="comment">// 期初权益 (分)</span>
+    <span class="string">"deposit"</span>: <span class="number">5000000</span>,            <span class="comment">// 入金 (分)</span>
+    <span class="string">"withdraw"</span>: <span class="number">0</span>,                <span class="comment">// 出金 (分)</span>
+    <span class="string">"commission"</span>: <span class="number">37000</span>,           <span class="comment">// 手续费 (分)</span>
+    <span class="string">"stampDuty"</span>: <span class="number">43400</span>,            <span class="comment">// 印花税 (分)</span>
+    <span class="string">"updateTime"</span>: <span class="number">1716307200000</span>       <span class="comment">// 更新时间</span>
+  <span class="key">}
+}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint">/api/account/positions</span>
+                    <span class="tag account">账户</span>
+                </div>
+                <div class="api-desc">获取持仓列表，用于账户详情面板和持仓管理 Tab</div>
+
+                <h3>查询参数</h3>
+                <table>
+                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                    <tr><td>symbol</td><td>string</td><td>否</td><td>股票代码，不传则返回全部</td></tr>
+                    <tr><td>type</td><td>string</td><td>否</td><td>类型: stock/futures/option</td></tr>
+                </table>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"positions"</span>: <span class="key">[
+</span>      <span class="key">{
+</span>        <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+        <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+        <span class="string">"type"</span>: <span class="string">"stock"</span>,
+        <span class="string">"quantity"</span>: <span class="number">1000</span>,              <span class="comment">// 持仓数量</span>
+        <span class="string">"available"</span>: <span class="number">1000</span>,            <span class="comment">// 可用数量</span>
+        <span class="string">"frozen"</span>: <span class="number">0</span>,                 <span class="comment">// 冻结数量</span>
+        <span class="string">"costPrice"</span>: <span class="number">1000</span>,            <span class="comment">// 成本价 (分)</span>
+        <span class="string">"currentPrice"</span>: <span class="number">1050</span>,         <span class="comment">// 当前价 (分)</span>
+        <span class="string">"marketValue"</span>: <span class="number">105000</span>,         <span class="comment">// 市值 (分)</span>
+        <span class="string">"unrealizedPnl"</span>: <span class="number">5000</span>,          <span class="comment">// 浮动盈亏 (分)</span>
+        <span class="string">"unrealizedPnlRatio"</span>: <span class="number">5.0</span>      <span class="comment">// 浮盈比例 (%)</span>
+      <span class="key">},
+</span>      <span class="key">{
+</span>        <span class="string">"symbol"</span>: <span class="string">"IF2401"</span>,
+        <span class="string">"symbolName"</span>: <span class="string">"股指期货2401"</span>,
+        <span class="string">"type"</span>: <span class="string">"futures"</span>,
+        <span class="string">"direction"</span>: <span class="string">"long"</span>,            <span class="comment">// 方向: long/short</span>
+        <span class="string">"quantity"</span>: <span class="number">2</span>,                 <span class="comment">// 持仓手数</span>
+        <span class="string">"costPrice"</span>: <span class="number">385000</span>,           <span class="comment">// 成本价 (分)</span>
+        <span class="string">"currentPrice"</span>: <span class="number">388000</span>,        <span class="comment">// 当前价 (分)</span>
+        <span class="string">"margin"</span>: <span class="number">92400</span>,              <span class="comment">// 保证金 (分)</span>
+        <span class="string">"unrealizedPnl"</span>: <span class="number">6000</span>,          <span class="comment">// 浮动盈亏 (分)</span>
+        <span class="string">"unrealizedPnlRatio"</span>: <span class="number">6.5</span>      <span class="comment">// 浮盈比例 (%)</span>
+      <span class="key">}
+</span>    <span class="key">]
+</span>  <span class="key">}
+}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 订单模块 ==================== -->
+        <div class="section">
+            <h2>📝 订单模块</h2>
+
+            <div class="api-card post">
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="endpoint">/api/orders</span>
+                    <span class="tag order">订单</span>
+                </div>
+                <div class="api-desc">下单接口，支持股票/期货/期权</div>
+
+                <h3>请求参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"symbol"</span>: <span class="string">"600000"</span>,           <span class="comment">// 标的代码</span>
+  <span class="string">"side"</span>: <span class="string">"buy"</span>,              <span class="comment">// 方向: buy/sell (股票)</span>
+                            <span class="comment">//      open_long/open_short/close_long/close_short (期货)</span>
+                            <span class="comment">//      call/put (期权)</span>
+  <span class="string">"orderType"</span>: <span class="string">"limit"</span>,        <span class="comment">// 订单类型: limit/market/fak/fok</span>
+  <span class="string">"price"</span>: <span class="number">1000</span>,               <span class="comment">// 价格 (分)，市价单可不传</span>
+  <span class="string">"quantity"</span>: <span class="number">100</span>,              <span class="comment">// 数量</span>
+  <span class="string">"accountId"</span>: <span class="number">10001</span>           <span class="comment">// 账户ID (可选，默认当前账户)</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"orderId"</span>: <span class="number">100001</span>,
+    <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+    <span class="string">"side"</span>: <span class="string">"buy"</span>,
+    <span class="string">"orderType"</span>: <span class="string">"limit"</span>,
+    <span class="string">"price"</span>: <span class="number">1000</span>,
+    <span class="string">"quantity"</span>: <span class="number">100</span>,
+    <span class="string">"status"</span>: <span class="string">"pending"</span>,          <span class="comment">// pending/partial_filled/filled/cancelled/rejected</span>
+    <span class="string">"createTime"</span>: <span class="number">1716307200000</span>
+  <span class="key">}
+}</span>
+                </div>
+            </div>
+
+            <div class="api-card delete">
+                <div class="api-header">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint">/api/orders/{orderId}</span>
+                    <span class="tag order">订单</span>
+                </div>
+                <div class="api-desc">撤单接口</div>
+
+                <h3>路径参数</h3>
+                <table>
+                    <tr><th>参数</th><th>类型</th><th>说明</th></tr>
+                    <tr><td>orderId</td><td>long</td><td>订单ID</td></tr>
+                </table>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"orderId"</span>: <span class="number">100001</span>,
+    <span class="string">"status"</span>: <span class="string">"cancelled"</span>,
+    <span class="string">"cancelTime"</span>: <span class="number">1716307200000</span>
+  <span class="key">}
+}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint">/api/orders/active</span>
+                    <span class="tag order">订单</span>
+                </div>
+                <div class="api-desc">获取当前委托列表，用于订单表格</div>
+
+                <h3>查询参数</h3>
+                <table>
+                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                    <tr><td>symbol</td><td>string</td><td>否</td><td>标的代码</td></tr>
+                    <tr><td>page</td><td>int</td><td>否</td><td>页码，默认1</td></tr>
+                    <tr><td>pageSize</td><td>int</td><td>否</td><td>每页条数，默认20</td></tr>
+                </table>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"total"</span>: <span class="number">15</span>,
+    <span class="string">"page"</span>: <span class="number">1</span>,
+    <span class="string">"pageSize"</span>: <span class="number">20</span>,
+    <span class="string">"orders"</span>: <span class="key">[
+</span>      <span class="key">{
+</span>        <span class="string">"orderId"</span>: <span class="number">100001</span>,
+        <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+        <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+        <span class="string">"side"</span>: <span class="string">"buy"</span>,
+        <span class="string">"orderType"</span>: <span class="string">"limit"</span>,
+        <span class="string">"price"</span>: <span class="number">1000</span>,
+        <span class="string">"quantity"</span>: <span class="number">100</span>,
+        <span class="string">"filledQuantity"</span>: <span class="number">50</span>,
+        <span class="string">"status"</span>: <span class="string">"partial_filled"</span>,
+        <span class="string">"createTime"</span>: <span class="number">1716307200000</span>
+      <span class="key">}
+</span>    <span class="key">]
+</span>  <span class="key">}
+}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 历史查询模块 ==================== -->
+        <div class="section">
+            <h2>📊 历史查询模块</h2>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint">/api/trades</span>
+                    <span class="tag history">历史</span>
+                </div>
+                <div class="api-desc">获取历史成交记录</div>
+
+                <h3>查询参数</h3>
+                <table>
+                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                    <tr><td>symbol</td><td>string</td><td>否</td><td>标的代码</td></tr>
+                    <tr><td>startDate</td><td>string</td><td>否</td><td>开始日期 YYYY-MM-DD</td></tr>
+                    <tr><td>endDate</td><td>string</td><td>否</td><td>结束日期 YYYY-MM-DD</td></tr>
+                    <tr><td>page</td><td>int</td><td>否</td><td>页码</td></tr>
+                    <tr><td>pageSize</td><td>int</td><td>否</td><td>每页条数</td></tr>
+                </table>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"total"</span>: <span class="number">100</span>,
+    <span class="string">"trades"</span>: <span class="key">[
+</span>      <span class="key">{
+</span>        <span class="string">"tradeId"</span>: <span class="number">200001</span>,
+        <span class="string">"orderId"</span>: <span class="number">100001</span>,
+        <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+        <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+        <span class="string">"side"</span>: <span class="string">"buy"</span>,
+        <span class="string">"price"</span>: <span class="number">1000</span>,
+        <span class="string">"quantity"</span>: <span class="number">50</span>,
+        <span class="string">"amount"</span>: <span class="number">50000</span>,            <span class="comment">// 成交金额 (分)</span>
+        <span class="string">"commission"</span>: <span class="number">25</span>,           <span class="comment">// 手续费 (分)</span>
+        <span class="string">"tradeTime"</span>: <span class="number">1716307200000</span>
+      <span class="key">}
+</span>    <span class="key">]
+</span>  <span class="key">}
+}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint">/api/account/cashflow</span>
+                    <span class="tag history">历史</span>
+                </div>
+                <div class="api-desc">获取资金流水</div>
+
+                <h3>查询参数</h3>
+                <table>
+                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                    <tr><td>type</td><td>string</td><td>否</td><td>类型: deposit/withdraw/trade/commission/all</td></tr>
+                    <tr><td>startDate</td><td>string</td><td>否</td><td>开始日期</td></tr>
+                    <tr><td>endDate</td><td>string</td><td>否</td><td>结束日期</td></tr>
+                    <tr><td>page</td><td>int</td><td>否</td><td>页码</td></tr>
+                </table>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"total"</span>: <span class="number">50</span>,
+    <span class="string">"records"</span>: <span class="key">[
+</span>      <span class="key">{
+</span>        <span class="string">"flowId"</span>: <span class="number">300001</span>,
+        <span class="string">"type"</span>: <span class="string">"trade"</span>,
+        <span class="string">"amount"</span>: <span class="number">-50000</span>,           <span class="comment">// 金额 (分)，负数表示支出</span>
+        <span class="string">"balance"</span>: <span class="number">123456700</span>,        <span class="comment">// 变动后余额</span>
+        <span class="string">"remark"</span>: <span class="string">"买入 600000"</span>,
+        <span class="string">"createTime"</span>: <span class="number">1716307200000</span>
+      <span class="key">}
+</span>    <span class="key">]
+</span>  <span class="key">}
+}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 行情模块 ==================== -->
+        <div class="section">
+            <h2>📈 行情模块</h2>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint">/api/market/symbols</span>
+                    <span class="tag market">行情</span>
+                </div>
+                <div class="api-desc">获取股票列表，用于市场列表组件</div>
+
+                <h3>查询参数</h3>
+                <table>
+                    <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                    <tr><td>keyword</td><td>string</td><td>否</td><td>搜索关键词</td></tr>
+                    <tr><td>type</td><td>string</td><td>否</td><td>类型: stock/futures/option</td></tr>
+                    <tr><td>sortBy</td><td>string</td><td>否</td><td>排序: change_pct/volume/amount</td></tr>
+                    <tr><td>sortOrder</td><td>string</td><td>否</td><td>asc/desc</td></tr>
+                    <tr><td>page</td><td>int</td><td>否</td><td>页码</td></tr>
+                    <tr><td>pageSize</td><td>int</td><td>否</td><td>每页条数</td></tr>
+                </table>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"total"</span>: <span class="number">5000</span>,
+    <span class="string">"symbols"</span>: <span class="key">[
+</span>      <span class="key">{
+</span>        <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+        <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+        <span class="string">"type"</span>: <span class="string">"stock"</span>,
+        <span class="string">"price"</span>: <span class="number">1050</span>,               <span class="comment">// 当前价 (分)</span>
+        <span class="string">"change"</span>: <span class="number">25</span>,                <span class="comment">// 涨跌 (分)</span>
+        <span class="string">"changePct"</span>: <span class="number">2.44</span>,            <span class="comment">// 涨跌幅 (%)</span>
+        <span class="string">"volume"</span>: <span class="number">12345678</span>,           <span class="comment">// 成交量</span>
+        <span class="string">"amount"</span>: <span class="number">12345678900</span>,        <span class="comment">// 成交额 (分)</span>
+        <span class="string">"isWatchlist"</span>: <span class="number">true</span>          <span class="comment">// 是否自选</span>
+      <span class="key">}
+</span>    <span class="key">]
+</span>  <span class="key">}
+}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint">/api/market/watchlist</span>
+                    <span class="tag market">行情</span>
+                </div>
+                <div class="api-desc">获取自选股列表</div>
+
+                <h3>响应参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"code"</span>: <span class="number">0</span>,
+  <span class="string">"message"</span>: <span class="string">"success"</span>,
+  <span class="string">"data"</span>: <span class="key">{
+</span>    <span class="string">"watchlist"</span>: <span class="key">[
+</span>      <span class="key">{
+</span>        <span class="string">"symbol"</span>: <span class="string">"600519"</span>,
+        <span class="string">"symbolName"</span>: <span class="string">"贵州茅台"</span>,
+        <span class="string">"price"</span>: <span class="number">185000</span>,
+        <span class="string">"changePct"</span>: <span class="number">1.5</span>,
+        <span class="string">"addTime"</span>: <span class="number">1716307200000</span>
+      <span class="key">}
+</span>    <span class="key">]
+</span>  <span class="key">}
+}</span>
+                </div>
+            </div>
+
+            <div class="api-card post">
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="endpoint">/api/market/watchlist</span>
+                    <span class="tag market">行情</span>
+                </div>
+                <div class="api-desc">添加自选股</div>
+
+                <h3>请求参数</h3>
+                <div class="code-block">
+<span class="key">{
+</span>  <span class="string">"symbol"</span>: <span class="string">"600519"</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <div class="api-card delete">
+                <div class="api-header">
+                    <span class="method delete">DELETE</span>
+                    <span class="endpoint">/api/market/watchlist/{symbol}</span>
+                    <span class="tag market">行情</span>
+                </div>
+                <div class="api-desc">删除自选股</div>
+            </div>
+        </div>
+
+        <!-- ==================== 接口调用流程图 ==================== -->
+        <div class="flow-section">
+            <h2>🔄 接口调用流程图</h2>
+
+            <h3>阶段 1: 登录初始化</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">POST /api/auth/login</div>
+                    <div class="step-desc">用户输入用户名密码 → 调用登录接口 → 获取 JWT Token → 存储到 localStorage</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/account/info</div>
+                    <div class="step-desc">登录成功后立即调用 → 初始化 AccountBar 导航栏账户信息</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/market/watchlist</div>
+                    <div class="step-desc">获取自选股列表 → 初始化 MarketList 自选股区域</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <div class="step-api">WebSocket 连接</div>
+                    <div class="step-desc">建立 WebSocket 连接 → 订阅行情/订单/成交推送</div>
+                </div>
+            </div>
+
+            <h3>阶段 2: 市场浏览</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/market/symbols?keyword=xxx&sortBy=change_pct</div>
+                    <div class="step-desc">搜索/筛选股票 → 更新 MarketList 列表</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">POST /api/market/watchlist</div>
+                    <div class="step-desc">点击"添加自选" → 添加到自选股列表</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-api">WebSocket 订阅 symbol 行情</div>
+                    <div class="step-desc">点击股票 → 订阅 K线/订单簿/成交明细 → 实时更新</div>
+                </div>
+            </div>
+
+            <h3>阶段 3: 下单交易</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/account/info (缓存)</div>
+                    <div class="step-desc">下单面板显示可用资金 → 从缓存读取 (定期刷新)</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">POST /api/orders</div>
+                    <div class="step-desc">填写价格/数量 → 点击买入/卖出 → 提交订单</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-api">WebSocket 推送订单状态</div>
+                    <div class="step-desc">订单状态变化 → WebSocket 推送 → 更新 OrderTable</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <div class="step-api">WebSocket 推送成交</div>
+                    <div class="step-desc">成交回报 → WebSocket 推送 → 更新账户/持仓/成交明细</div>
+                </div>
+            </div>
+
+            <h3>阶段 4: 撤单操作</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">DELETE /api/orders/{orderId}</div>
+                    <div class="step-desc">点击"撤单"按钮 → 调用撤单接口 → 返回撤单结果</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">WebSocket 推送撤单结果</div>
+                    <div class="step-desc">撤单成功 → WebSocket 推送 → 更新订单状态/解冻资金</div>
+                </div>
+            </div>
+
+            <h3>阶段 5: 历史查询</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/orders/active</div>
+                    <div class="step-desc">切换到"当前委托" Tab → 加载当前委托列表</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/trades?startDate=xxx&endDate=xxx</div>
+                    <div class="step-desc">切换到"历史成交" Tab → 加载历史成交记录</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/account/cashflow?type=trade</div>
+                    <div class="step-desc">切换到"资金流水" Tab → 加载资金流水记录</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <div class="step-api">GET /api/account/positions</div>
+                    <div class="step-desc">切换到"持仓管理" Tab → 加载持仓列表</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== WebSocket 模块 ==================== -->
+        <div class="section">
+            <h2>🔌 WebSocket 模块</h2>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #a78bfa; color: #000;">WS</span>
+                    <span class="endpoint">ws://host:port/ws</span>
+                    <span class="tag" style="background: #a78bfa; color: #000;">WebSocket</span>
+                </div>
+                <div class="api-desc">WebSocket 连接端点，用于实时行情推送、订单状态推送、成交推送</div>
+
+                <h3>连接建立</h3>
+                <div class="code-block">
+<span class="comment">// 连接 URL</span>
+ws://host:port/ws?token=<span class="string">&lt;jwt_token&gt;</span>
+
+<span class="comment">// 连接成功响应</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"connected"</span>,
+  <span class="string">"clientId"</span>: <span class="string">"client-xxx"</span>,
+  <span class="string">"serverTime"</span>: <span class="number">1716307200000</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>心跳机制</h3>
+                <div class="code-block">
+<span class="comment">// 客户端发送 (每30秒)</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"ping"</span>,
+  <span class="string">"timestamp"</span>: <span class="number">1716307200000</span>
+<span class="key">}</span>
+
+<span class="comment">// 服务端响应</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"pong"</span>,
+  <span class="string">"timestamp"</span>: <span class="number">1716307200000</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <h3>订阅消息</h3>
+            <div class="api-card post">
+                <div class="api-header">
+                    <span class="method post">SUB</span>
+                    <span class="endpoint">订阅行情/订单/成交</span>
+                    <span class="tag" style="background: #a78bfa; color: #000;">WebSocket</span>
+                </div>
+
+                <h3>订阅行情快照</h3>
+                <div class="code-block">
+<span class="comment">// 订阅请求</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"subscribe"</span>,
+  <span class="string">"channel"</span>: <span class="string">"market_snapshot"</span>,
+  <span class="string">"symbols"</span>: <span class="key">[</span><span class="string">"600000"</span>, <span class="string">"600519"</span><span class="key">]</span>
+<span class="key">}</span>
+
+<span class="comment">// 订阅成功响应</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"subscribed"</span>,
+  <span class="string">"channel"</span>: <span class="string">"market_snapshot"</span>,
+  <span class="string">"symbols"</span>: <span class="key">[</span><span class="string">"600000"</span>, <span class="string">"600519"</span><span class="key">]</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>订阅 K 线数据</h3>
+                <div class="code-block">
+<span class="comment">// 订阅请求</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"subscribe"</span>,
+  <span class="string">"channel"</span>: <span class="string">"kline"</span>,
+  <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+  <span class="string">"period"</span>: <span class="string">"1m"</span>        <span class="comment">// 1m/5m/15m/30m/60m/d/w/m</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>订阅订单簿 (Level 2)</h3>
+                <div class="code-block">
+<span class="comment">// 订阅请求</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"subscribe"</span>,
+  <span class="string">"channel"</span>: <span class="string">"orderbook"</span>,
+  <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+  <span class="string">"depth"</span>: <span class="number">10</span>         <span class="comment">// 档位深度: 5/10/20/50</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>订阅订单状态</h3>
+                <div class="code-block">
+<span class="comment">// 订阅请求 (订阅当前账户所有订单)</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"subscribe"</span>,
+  <span class="string">"channel"</span>: <span class="string">"order_update"</span>,
+  <span class="string">"accountId"</span>: <span class="number">10001</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>订阅成交推送</h3>
+                <div class="code-block">
+<span class="comment">// 订阅请求</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"subscribe"</span>,
+  <span class="string">"channel"</span>: <span class="string">"trade_update"</span>,
+  <span class="string">"accountId"</span>: <span class="number">10001</span>
+<span class="key">}</span>
+                </div>
+
+                <h3>订阅账户资金变动</h3>
+                <div class="code-block">
+<span class="comment">// 订阅请求</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"subscribe"</span>,
+  <span class="string">"channel"</span>: <span class="string">"account_update"</span>,
+  <span class="string">"accountId"</span>: <span class="number">10001</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <h3>取消订阅</h3>
+            <div class="api-card delete">
+                <div class="api-header">
+                    <span class="method delete">UNSUB</span>
+                    <span class="endpoint">取消订阅</span>
+                    <span class="tag" style="background: #a78bfa; color: #000;">WebSocket</span>
+                </div>
+
+                <div class="code-block">
+<span class="comment">// 取消订阅请求</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"unsubscribe"</span>,
+  <span class="string">"channel"</span>: <span class="string">"market_snapshot"</span>,
+  <span class="string">"symbols"</span>: <span class="key">[</span><span class="string">"600000"</span><span class="key">]</span>
+<span class="key">}</span>
+
+<span class="comment">// 取消成功响应</span>
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"unsubscribed"</span>,
+  <span class="string">"channel"</span>: <span class="string">"market_snapshot"</span>,
+  <span class="string">"symbols"</span>: <span class="key">[</span><span class="string">"600000"</span><span class="key">]</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <h3>推送消息类型</h3>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #fb923c; color: #000;">PUSH</span>
+                    <span class="endpoint">行情快照推送</span>
+                    <span class="tag market">行情</span>
+                </div>
+                <div class="code-block">
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"market_snapshot"</span>,
+  <span class="string">"data"</span>: <span class="key">{</span>
+    <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+    <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+    <span class="string">"price"</span>: <span class="number">1050</span>,              <span class="comment">// 当前价 (分)</span>
+    <span class="string">"open"</span>: <span class="number">1025</span>,              <span class="comment">// 开盘价 (分)</span>
+    <span class="string">"high"</span>: <span class="number">1060</span>,              <span class="comment">// 最高价 (分)</span>
+    <span class="string">"low"</span>: <span class="number">1020</span>,               <span class="comment">// 最低价 (分)</span>
+    <span class="string">"preClose"</span>: <span class="number">1025</span>,          <span class="comment">// 昨收 (分)</span>
+    <span class="string">"change"</span>: <span class="number">25</span>,               <span class="comment">// 涨跌 (分)</span>
+    <span class="string">"changePct"</span>: <span class="number">2.44</span>,          <span class="comment">// 涨跌幅 (%)</span>
+    <span class="string">"volume"</span>: <span class="number">12345678</span>,          <span class="comment">// 成交量</span>
+    <span class="string">"amount"</span>: <span class="number">12345678900</span>,       <span class="comment">// 成交额 (分)</span>
+    <span class="string">"bidPrice1"</span>: <span class="number">1049</span>,           <span class="comment">// 买一价 (分)</span>
+    <span class="string">"bidVolume1"</span>: <span class="number">5000</span>,          <span class="comment">// 买一量</span>
+    <span class="string">"askPrice1"</span>: <span class="number">1050</span>,           <span class="comment">// 卖一价 (分)</span>
+    <span class="string">"askVolume1"</span>: <span class="number">3000</span>,          <span class="comment">// 卖一量</span>
+    <span class="string">"timestamp"</span>: <span class="number">1716307200000</span>
+  <span class="key">}</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #fb923c; color: #000;">PUSH</span>
+                    <span class="endpoint">K线数据推送</span>
+                    <span class="tag market">行情</span>
+                </div>
+                <div class="code-block">
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"kline"</span>,
+  <span class="string">"data"</span>: <span class="key">{</span>
+    <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+    <span class="string">"period"</span>: <span class="string">"1m"</span>,
+    <span class="string">"time"</span>: <span class="number">1716307200000</span>,
+    <span class="string">"open"</span>: <span class="number">1050</span>,
+    <span class="string">"high"</span>: <span class="number">1055</span>,
+    <span class="string">"low"</span>: <span class="number">1048</span>,
+    <span class="string">"close"</span>: <span class="number">1052</span>,
+    <span class="string">"volume"</span>: <span class="number">12345</span>,
+    <span class="string">"amount"</span>: <span class="number">12345678</span>
+  <span class="key">}</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #fb923c; color: #000;">PUSH</span>
+                    <span class="endpoint">订单簿推送 (Level 2)</span>
+                    <span class="tag market">行情</span>
+                </div>
+                <div class="code-block">
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"orderbook"</span>,
+  <span class="string">"data"</span>: <span class="key">{</span>
+    <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+    <span class="string">"bids"</span>: <span class="key">[</span>                  <span class="comment">// 买盘 [价格, 数量]</span>
+      <span class="key">[</span><span class="number">1050</span>, <span class="number">5000</span><span class="key">]</span>,
+      <span class="key">[</span><span class="number">1049</span>, <span class="number">8000</span><span class="key">]</span>,
+      <span class="key">[</span><span class="number">1048</span>, <span class="number">12000</span><span class="key">]</span>
+    <span class="key">]</span>,
+    <span class="string">"asks"</span>: <span class="key">[</span>                  <span class="comment">// 卖盘 [价格, 数量]</span>
+      <span class="key">[</span><span class="number">1051</span>, <span class="number">3000</span><span class="key">]</span>,
+      <span class="key">[</span><span class="number">1052</span>, <span class="number">6000</span><span class="key">]</span>,
+      <span class="key">[</span><span class="number">1053</span>, <span class="number">10000</span><span class="key">]</span>
+    <span class="key">]</span>,
+    <span class="string">"timestamp"</span>: <span class="number">1716307200000</span>
+  <span class="key">}</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #fb923c; color: #000;">PUSH</span>
+                    <span class="endpoint">订单状态推送</span>
+                    <span class="tag order">订单</span>
+                </div>
+                <div class="code-block">
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"order_update"</span>,
+  <span class="string">"data"</span>: <span class="key">{</span>
+    <span class="string">"orderId"</span>: <span class="number">100001</span>,
+    <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+    <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+    <span class="string">"side"</span>: <span class="string">"buy"</span>,
+    <span class="string">"orderType"</span>: <span class="string">"limit"</span>,
+    <span class="string">"price"</span>: <span class="number">1000</span>,
+    <span class="string">"quantity"</span>: <span class="number">100</span>,
+    <span class="string">"filledQuantity"</span>: <span class="number">50</span>,
+    <span class="string">"status"</span>: <span class="string">"partial_filled"</span>,  <span class="comment">// pending/partial_filled/filled/cancelled/rejected</span>
+    <span class="string">"message"</span>: <span class="string">""</span>,                  <span class="comment">// 错误信息</span>
+    <span class="string">"updateTime"</span>: <span class="number">1716307200000</span>
+  <span class="key">}</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #fb923c; color: #000;">PUSH</span>
+                    <span class="endpoint">成交推送</span>
+                    <span class="tag order">订单</span>
+                </div>
+                <div class="code-block">
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"trade_update"</span>,
+  <span class="string">"data"</span>: <span class="key">{</span>
+    <span class="string">"tradeId"</span>: <span class="number">200001</span>,
+    <span class="string">"orderId"</span>: <span class="number">100001</span>,
+    <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+    <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+    <span class="string">"side"</span>: <span class="string">"buy"</span>,
+    <span class="string">"price"</span>: <span class="number">1000</span>,
+    <span class="string">"quantity"</span>: <span class="number">50</span>,
+    <span class="string">"amount"</span>: <span class="number">50000</span>,             <span class="comment">// 成交金额 (分)</span>
+    <span class="string">"commission"</span>: <span class="number">25</span>,            <span class="comment">// 手续费 (分)</span>
+    <span class="string">"stampDuty"</span>: <span class="number">0</span>,              <span class="comment">// 印花税 (分)，买入为0</span>
+    <span class="string">"tradeTime"</span>: <span class="number">1716307200000</span>
+  <span class="key">}</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #fb923c; color: #000;">PUSH</span>
+                    <span class="endpoint">账户资金变动推送</span>
+                    <span class="tag account">账户</span>
+                </div>
+                <div class="code-block">
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"account_update"</span>,
+  <span class="string">"data"</span>: <span class="key">{</span>
+    <span class="string">"accountId"</span>: <span class="number">10001</span>,
+    <span class="string">"balance"</span>: <span class="number">123456700</span>,         <span class="comment">// 总资金 (分)</span>
+    <span class="string">"available"</span>: <span class="number">56789000</span>,       <span class="comment">// 可用资金 (分)</span>
+    <span class="string">"frozen"</span>: <span class="number">100000</span>,            <span class="comment">// 冻结资金 (分)</span>
+    <span class="string">"marketValue"</span>: <span class="number">78901200</span>,      <span class="comment">// 持仓市值 (分)</span>
+    <span class="string">"totalAsset"</span>: <span class="number">123456700</span>,      <span class="comment">// 总资产 (分)</span>
+    <span class="string">"unrealizedPnl"</span>: <span class="number">1234500</span>,     <span class="comment">// 浮动盈亏 (分)</span>
+    <span class="string">"updateTime"</span>: <span class="number">1716307200000</span>
+  <span class="key">}</span>
+<span class="key">}</span>
+                </div>
+            </div>
+
+            <div class="api-card get">
+                <div class="api-header">
+                    <span class="method" style="background: #fb923c; color: #000;">PUSH</span>
+                    <span class="endpoint">持仓变动推送</span>
+                    <span class="tag account">账户</span>
+                </div>
+                <div class="code-block">
+<span class="key">{</span>
+  <span class="string">"type"</span>: <span class="string">"position_update"</span>,
+  <span class="string">"data"</span>: <span class="key">{</span>
+    <span class="string">"accountId"</span>: <span class="number">10001</span>,
+    <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
+    <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
+    <span class="string">"quantity"</span>: <span class="number">1000</span>,             <span class="comment">// 持仓数量</span>
+    <span class="string">"available"</span>: <span class="number">1000</span>,           <span class="comment">// 可用数量</span>
+    <span class="string">"frozen"</span>: <span class="number">0</span>,                <span class="comment">// 冻结数量</span>
+    <span class="string">"costPrice"</span>: <span class="number">1000</span>,           <span class="comment">// 成本价 (分)</span>
+    <span class="string">"currentPrice"</span>: <span class="number">1050</span>,        <span class="comment">// 当前价 (分)</span>
+    <span class="string">"marketValue"</span>: <span class="number">105000</span>,        <span class="comment">// 市值 (分)</span>
+    <span class="string">"unrealizedPnl"</span>: <span class="number">5000</span>,       <span class="comment">// 浮动盈亏 (分)</span>
+    <span class="string">"updateTime"</span>: <span class="number">1716307200000</span>
+  <span class="key">}</span>
+<span class="key">}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== WebSocket 交互流程图 ==================== -->
+        <div class="flow-section">
+            <h2>🔌 WebSocket 交互流程图</h2>
+
+            <h3>阶段 1: 连接建立</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">ws://host:port/ws?token=xxx</div>
+                    <div class="step-desc">前端使用 JWT Token 建立 WebSocket 连接 → 服务端返回 connected 消息</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">subscribe: market_snapshot (自选股列表)</div>
+                    <div class="step-desc">订阅自选股行情快照 → 实时推送行情变动 → 更新 MarketList 组件</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-api">subscribe: order_update + trade_update + account_update</div>
+                    <div class="step-desc">订阅订单/成交/账户变动 → 实时推送交易状态 → 更新订单表格和账户信息</div>
+                </div>
+            </div>
+
+            <h3>阶段 2: 行情订阅</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">unsubscribe: market_snapshot (旧股票)</div>
+                    <div class="step-desc">用户切换股票 → 先取消旧股票订阅</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">subscribe: kline + orderbook (新股票)</div>
+                    <div class="step-desc">订阅新股票 K线 + 订单簿 → 实时推送 → 更新 ChartPanel 和 DepthPanel</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-api">PUSH: kline / orderbook</div>
+                    <div class="step-desc">服务端持续推送 K线和订单簿数据 → 前端实时渲染</div>
+                </div>
+            </div>
+
+            <h3>阶段 3: 交易推送</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">POST /api/orders (HTTP 下单)</div>
+                    <div class="step-desc">用户下单 → HTTP 请求 → 返回 orderId (pending 状态)</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">PUSH: order_update (partial_filled)</div>
+                    <div class="step-desc">订单部分成交 → WebSocket 推送订单状态 → 更新 OrderTable</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-api">PUSH: trade_update</div>
+                    <div class="step-desc">成交回报 → WebSocket 推送成交明细 → 更新成交列表</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <div class="step-api">PUSH: account_update + position_update</div>
+                    <div class="step-desc">账户资金/持仓变动 → WebSocket 推送 → 更新 AccountBar 和持仓面板</div>
+                </div>
+            </div>
+
+            <h3>阶段 4: 心跳保活</h3>
+            <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-api">ping → pong (每 30 秒)</div>
+                    <div class="step-desc">前端定时发送 ping → 服务端返回 pong → 保持连接活跃</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-api">断线重连</div>
+                    <div class="step-desc">连接断开 → 自动重连 → 重新订阅所有 channel</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 错误码定义 ==================== -->
+        <div class="section">
+            <h2>⚠️ 错误码定义</h2>
+            <table>
+                <tr><th>错误码</th><th>说明</th></tr>
+                <tr><td>0</td><td>成功</td></tr>
+                <tr><td>1001</td><td>用户名或密码错误</td></tr>
+                <tr><td>1002</td><td>Token 已过期</td></tr>
+                <tr><td>1003</td><td>无权限访问</td></tr>
+                <tr><td>2001</td><td>账户余额不足</td></tr>
+                <tr><td>2002</td><td>持仓不足</td></tr>
+                <tr><td>2003</td><td>超出涨跌停限制</td></tr>
+                <tr><td>2004</td><td>订单不存在</td></tr>
+                <tr><td>2005</td><td>订单已成交，无法撤单</td></tr>
+                <tr><td>2006</td><td>订单已撤销</td></tr>
+                <tr><td>3001</td><td>标的代码不存在</td></tr>
+                <tr><td>3002</td><td>非交易时段</td></tr>
+                <tr><td>9999</td><td>系统异常</td></tr>
+            </table>
+        </div>
+
+    </div>
+</body>
+</html>
