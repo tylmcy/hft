@@ -204,19 +204,29 @@ OrderBook 状态存储在 `orderbook.dat` Chronicle Map，JVM重启后自动恢�
 
 | 组件 | 技术选型 |
 |------|---------|
-| 消息队列 | Chronicle Queue |
-| 内存存储 | Chronicle Map |
+| Java | Java 21 LTS |
+| Spring Boot | 3.x + 虚拟线程（Project Loom） |
+| 消息队列 | Chronicle Queue（最新稳定版） |
+| 内存存储 | Chronicle Map（最新稳定版） |
 | 数据库 | H2 (磁盘模式) |
 | GC策略 | ZGC (Generational) |
-| Web容器 | Spring Boot 4 + Tomcat |
+| Web容器 | Spring Boot + Tomcat |
 | 前端部署 | 打包到 static/ 目录，随JVM启动 |
+| 前端框架 | React 18 + TypeScript + Vite |
+| 前端图表 | lightweight-charts（TradingView官方开源） |
+| 前端UI | Ant Design 5.x |
+| 前端状态 | Zustand |
+| 客户端支持 | 仅Web端 |
 | 监控 | Prometheus + Grafana |
 | 日志 | ELK Stack |
 | 链路追踪 | Jaeger |
-| 前端框架 | React 18 + TypeScript |
-| 前端图表 | TradingView |
-| 前端UI | Ant Design 5.x |
-| 前端状态 | Zustand |
+
+## User System
+
+**用户账户流程**：
+- 用户注册时自动创建账户，初始余额为0
+- 管理员通过 `/admin/deposit` 接口手动入金
+- 无审批流程
 
 ## Build & Deploy
 
@@ -258,7 +268,21 @@ java -Xms10g -Xmx10g -XX:+UseZGC -jar target/hft-trading.jar
 
 ## Documentation
 
-- [技术方案 V2](docs/technical-solution-V2.md) - 完整技术方案
+- [技术方案 V3](docs/technical-solution-V3.md) - 完整技术方案
 - [HTTP API 定义](docs/http-api-definition.html) - REST API 和 WebSocket 接口定义
 - [线程工作流](docs/thread-workflow.html) - 线程模型和数据流
 - [前端布局](docs/frontend-layout.html) - 前端组件设计
+
+## Git 操作规范
+
+**重要**：所有Git操作必须等待用户明确指令，不要主动执行任何git命令。
+
+| 操作 | 执行条件 |
+|------|---------|
+| git add / git commit | 用户说"提交到本地"或"commit" |
+| git push | 用户说"提交到远程"或"push" |
+
+**禁止行为**：
+- 不要在完成代码修改后自动执行git命令
+- 不要主动提示用户是否需要提交
+- 严格等待用户的明确指令
