@@ -21,6 +21,13 @@ hft/
 - 前端: React 18 + TypeScript + TradingView + Ant Design 5
 - 监控: Prometheus + Grafana + ELK
 
+## 架构图
+
+![alt text](trading-system-architecture.png)
+
+![alt text](trading-frontend-layout-v4.png)
+
+
 ## 文档
 
 - [技术方案 V3](docs/technical-solution-V3.md)
