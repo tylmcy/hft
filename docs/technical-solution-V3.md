@@ -1,6 +1,6 @@
 # A股交易系统技术方案 V3
 
-> 版本: v3.4
+> 版本: v3.5
 > 日期: 2026-05-20
 > 架构师: Trading System Architect
 > 状态: **设计完成，待开发**
@@ -21,6 +21,8 @@
 | v3.2 | 2026-05-20 | 明确系统定位：模拟交易、撮合模式、行情来源、做市商预留 |
 | v3.3 | 2026-05-20 | 前后端一体化部署：前端打包到Tomcat静态资源，随JVM启动 |
 | v3.4 | 2026-05-20 | 确认技术栈版本：Java21、SpringBoot3+虚拟线程、用户注册自动创建账户 |
+| v3.5 | 2026-05-20 | 数据存储优化：instruments移至H2+内存、market_data改用Java内存、新增EOD快照流程 |
+| v3.6 | 2026-05-20 | 新增交易时间段配置、交易阶段切换机制、新浪财经品种查询接口 |
 
 ---
 
@@ -43,6 +45,8 @@
 15. [SOD流程](#15-sod流程)
 16. [期货期权规格](#16-期货期权规格)
 17. [限流策略](#17-限流策略)
+18. [交易时间段配置](#18-交易时间段配置)
+19. [新浪财经品种查询接口](#19-新浪财经品种查询接口)
 
 ---
 
@@ -195,7 +199,9 @@
 │  │  │  positions.dat   持仓状态    │  │  orders         订单历史    │  │   │
 │  │  │  orderbook.dat   订单簿      │  │  cashflow       资金流水    │  │   │
 │  │  │  progress.dat    处理进度    │  │  api_keys       API密钥     │  │   │
-│  │  │  market_data.dat 行情缓存    │  │                             │  │   │
+│  │  │  processed.dat   成交去重    │  │  instruments    交易品种    │  │   │
+│  │  │                             │  │  account_snapshots 账户快照  │  │   │
+│  │  │                             │  │  position_snapshots 持仓快照 │  │   │
 │  │  └─────────────────────────────┘  └─────────────────────────────┘  │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
@@ -241,7 +247,9 @@
 │  │  │  positions.dat   持仓状态    │  │  orders         订单历史    │  │   │
 │  │  │  orderbook.dat   订单簿      │  │  cashflow       资金流水    │  │   │
 │  │  │  progress.dat    处理进度    │  │  api_keys       API密钥     │  │   │
-│  │  │  market_data.dat 行情缓存    │  │                             │  │   │
+│  │  │  processed.dat   成交去重    │  │  instruments    交易品种    │  │   │
+│  │  │                             │  │  account_snapshots 账户快照  │  │   │
+│  │  │                             │  │  position_snapshots 持仓快照 │  │   │
 │  │  └─────────────────────────────┘  └─────────────────────────────┘  │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
@@ -265,6 +273,16 @@
 ## 3. 数据模型
 
 ### 3.1 Chronicle Map 数据结构
+
+**Chronicle Map 文件列表**：
+
+| 文件 | 用途 | 说明 |
+|------|------|------|
+| accounts.dat | 账户状态 | 实时持久化，JVM重启恢复 |
+| positions.dat | 持仓状态 | 实时持久化，JVM重启恢复 |
+| orderbook.dat | 订单簿 | 实时持久化，JVM重启恢复 |
+| progress.dat | 处理进度 | 订单/成交队列处理进度 |
+| processed.dat | 成交去重 | 幂等检查，防止重复清算 |
 
 #### 3.1.1 账户状态 (accounts.dat)
 
@@ -333,7 +351,52 @@ quantity >= 0, available >= 0, frozen >= 0
 }
 ```
 
-#### 3.1.5 行情缓存 (market_data.dat)
+#### 3.1.5 成交去重表 (processed.dat)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| tradeId | long | 成交ID（Key） |
+| queueIndex | long | 队列索引 |
+| processTime | long | 处理时间戳 |
+
+**用途**：幂等检查，防止JVM重启后重复清算
+
+### 3.2 Java 内存数据结构
+
+**说明**：以下数据存储在Java内存中（ConcurrentHashMap），不使用Chronicle Map
+
+#### 3.2.1 交易品种 (Instrument)
+
+**存储位置**：H2数据库 + Java内存（ConcurrentHashMap<String, Instrument>）
+
+**加载时机**：SOD启动时从H2数据库加载到内存
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| symbol | String | 标的代码（Key） |
+| name | String | 名称 |
+| type | enum | STOCK / FUTURES / OPTION |
+| exchange | enum | SH / SZ / CFFEX / SHFE |
+| preClose | long | 昨收价（分） |
+| limitUp | long | 涨停价（分） |
+| limitDown | long | 跌停价（分） |
+| minPriceUnit | long | 最小变动价位（分） |
+| contractMultiplier | int | 合约乘数（期货/期权） |
+| marginRatio | long | 保证金比例（万分之） |
+| strikePrice | long | 行权价（期权，分） |
+| expiryDate | int | 到期日（期权，YYYYMMDD） |
+| underlying | String | 标的（期权） |
+
+**设计说明**：
+- instruments数据相对静态，不需要Chronicle Map的实时持久化特性
+- SOD时从H2加载到内存，支持快速查询
+- 新增品种时写入H2，内存同步更新
+
+#### 3.2.2 行情快照 (MarketDataSnapshot)
+
+**存储位置**：Java内存（ConcurrentHashMap<String, MarketDataSnapshot>）
+
+**数据来源**：撮合引擎每3秒推送最新五档行情
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -352,27 +415,12 @@ quantity >= 0, available >= 0, frozen >= 0
 | askVolumes | long[5] | 卖1-5量 |
 | updateTime | long | 更新时间戳 |
 
-#### 3.1.6 交易品种 (instruments.dat)
+**设计说明**：
+- 行情数据实时性要求高，但不需要持久化
+- 撮合引擎定时推送，内存直接更新
+- HTTP查询直接读内存，无IO开销
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| symbol | String | 标的代码（Key） |
-| name | String | 名称 |
-| type | enum | STOCK / FUTURES / OPTION |
-| exchange | enum | SH / SZ / CFFEX / SHFE |
-| preClose | long | 昨收价（分） |
-| limitUp | long | 涨停价（分） |
-| limitDown | long | 跌停价（分） |
-| minPriceUnit | long | 最小变动价位（分） |
-| contractMultiplier | int | 合约乘数（期货/期权） |
-| marginRatio | long | 保证金比例（万分之） |
-| strikePrice | long | 行权价（期权，分） |
-| expiryDate | int | 到期日（期权，YYYYMMDD） |
-| underlying | String | 标的（期权） |
-
-**注**: 由SOD流程每日生成，包含当日涨跌停价格和保证金设置
-
-### 3.2 Chronicle Queue 数据结构
+### 3.3 Chronicle Queue 数据结构
 
 #### 3.2.1 订单队列 (order_queue.dat)
 
@@ -468,18 +516,81 @@ CREATE TABLE api_keys (
 );
 ```
 
+#### 3.3.4 交易品种表 (instruments)
+
+```sql
+CREATE TABLE instruments (
+    symbol VARCHAR(20) PRIMARY KEY,
+    name VARCHAR(100),
+    type VARCHAR(20),          -- STOCK / FUTURES / OPTION
+    exchange VARCHAR(10),      -- SH / SZ / CFFEX / SHFE
+    pre_close BIGINT,          -- 昨收价（分）
+    limit_up BIGINT,           -- 涨停价（分）
+    limit_down BIGINT,         -- 跌停价（分）
+    min_price_unit BIGINT,     -- 最小变动价位（分）
+    contract_multiplier INT,   -- 合约乘数（期货/期权）
+    margin_ratio BIGINT,       -- 保证金比例（万分之）
+    strike_price BIGINT,       -- 行权价（期权，分）
+    expiry_date INT,           -- 到期日（期权，YYYYMMDD）
+    underlying VARCHAR(20),    -- 标的（期权）
+    status VARCHAR(20),        -- ACTIVE / SUSPENDED / DELISTED
+    create_time TIMESTAMP,
+    update_time TIMESTAMP
+);
+```
+
+**说明**：SOD启动时从该表加载所有ACTIVE状态的品种到内存
+
+#### 3.3.5 账户快照表 (account_snapshots)
+
+```sql
+CREATE TABLE account_snapshots (
+    snapshot_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    account_id BIGINT,
+    snapshot_date DATE,        -- 快照日期
+    balance BIGINT,            -- 总资产（分）
+    available BIGINT,          -- 可用资金（分）
+    frozen BIGINT,             -- 冻结资金（分）
+    margin BIGINT,             -- 占用保证金（分）
+    create_time TIMESTAMP,
+    INDEX idx_account_date (account_id, snapshot_date)
+);
+```
+
+**说明**：每日EOD生成账户快照，用于历史查询和资产变化分析
+
+#### 3.3.6 持仓快照表 (position_snapshots)
+
+```sql
+CREATE TABLE position_snapshots (
+    snapshot_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    account_id BIGINT,
+    symbol VARCHAR(20),
+    snapshot_date DATE,        -- 快照日期
+    quantity BIGINT,           -- 持仓数量
+    available BIGINT,          -- 可用数量
+    frozen BIGINT,             -- 冻结数量
+    avg_price BIGINT,          -- 成本价（分）
+    market_value BIGINT,       -- 市值（分）
+    create_time TIMESTAMP,
+    INDEX idx_account_date (account_id, snapshot_date),
+    INDEX idx_symbol_date (symbol, snapshot_date)
+);
+```
+
+**说明**：每日EOD生成持仓快照，用于历史查询和持仓变化分析
+
 ---
 
 ## 4. 线程模型
 
 ### 4.1 线程分类
 
-| 线程类型 | 数量 | 职责 | Chronicle Map 访问 |
+| 线程类型 | 数量 | 职责 | 数据访问 |
 |---------|------|------|-------------------|
 | Tomcat HTTP-IO | 8-32 | 接收HTTP请求 | compute写入（订单网关） |
 | WebSocket EventLoop | 8 | WebSocket推送 | 不访问 |
-| MarketDataWorker | 1 | 行情拉取与推送 | 写入（market_data.dat） |
-| MatchingEngine | 1 | 订单撮合 | 写入（orderbook.dat） |
+| MatchingEngine | 1 | 订单撮合、五档行情推送 | 写入（orderbook.dat）、内存行情 |
 | ClearingWorker | 1 | 成交清算 | compute写入（accounts/positions） |
 | AsyncPersistence | 1 | H2批量写入 | 不访问 |
 
@@ -538,17 +649,17 @@ CREATE TABLE api_keys (
 │                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  【行情推送】                                                                │
+│  【五档行情推送】                                                            │
 │                                                                             │
-│  MarketDataWorker Thread (单线程)                                            │
+│  MatchingEngine Thread (定时任务)                                            │
 │       │                                                                     │
-│       │ 循环:                                                               │
-│       │   1. HTTP请求新浪财经接口                                           │
-│       │   2. 解析行情数据                                                   │
-│       │   3. 写入 market_data.dat                                           │
+│       │ 每3秒执行:                                                          │
+│       │   1. 遍历所有Symbol的OrderBook                                      │
+│       │   2. 聚合买卖五档行情                                                │
+│       │   3. 更新内存 MarketDataSnapshot                                    │
 │       │   4. 推送 WebSocket 行情                                            │
 │       ▼                                                                     │
-│  定时轮询，交易时段1秒/次，非交易时段30秒/次                                   │
+│  五档行情来自撮合引擎订单簿，实时反映市场深度                                  │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -559,11 +670,10 @@ CREATE TABLE api_keys (
 |------|--------|------|
 | Tomcat HTTP | 8-32 | 动态调整 |
 | WebSocket EventLoop | 8 | CPU核心数 |
-| MarketDataWorker | 1 | 行情拉取 |
-| MatchingEngine | 1 | 撮合引擎 |
+| MatchingEngine | 1 | 撮合引擎 + 五档行情推送 |
 | ClearingWorker | 1 | 清算服务 |
 | AsyncPersistence | 1 | H2持久化 |
-| **总计** | **20-44** | 实际活跃约15-20 |
+| **总计** | **19-43** | 实际活跃约14-19 |
 
 ---
 
@@ -687,7 +797,7 @@ CREATE TABLE api_keys (
 │     queueIndex = tailer.index()                                             │
 │                                                                             │
 │  2. 幂等检查                                                                │
-│     existing = processedTradesMap.putIfAbsent(tradeId, state)               │
+│     existing = processedMap.putIfAbsent(tradeId, state)                     │
 │     if (existing != null) return  // 已处理，跳过                           │
 │                                                                             │
 │  3. 买方清算                                                                │
@@ -826,14 +936,14 @@ Chronicle Map 的 `compute` 方法提供 Entry 级别锁，保证读取-修改-�
 **解决方案**：TradeId 去重表
 
 ```
-processed_trades.dat
+processed.dat
 Key: tradeId
 Value: { tradeId, queueIndex, processTime }
 ```
 
 **幂等检查流程**：
 ```java
-ProcessedTradeState existing = processedTradesMap.putIfAbsent(
+ProcessedTradeState existing = processedMap.putIfAbsent(
     tradeId,
     new ProcessedTradeState(tradeId, queueIndex, now)
 );
@@ -865,10 +975,14 @@ if (existing != null) {
 | 持仓状态 | Chronicle Map | 实时（内存映射） |
 | 订单簿 | Chronicle Map | 实时（内存映射） |
 | 处理进度 | Chronicle Map | 每笔清算后立即写入 |
+| 成交去重 | Chronicle Map | 清算前putIfAbsent |
 | 订单事件 | Chronicle Queue | 下单时立即写入 |
 | 成交事件 | Chronicle Queue | 撮合时立即写入 |
+| 交易品种 | H2 Database | 新增品种时写入，SOD加载到内存 |
 | 成交记录 | H2 Database | 异步批量（每100ms或1000条） |
 | 订单历史 | H2 Database | 异步批量 |
+| 账户快照 | H2 Database | EOD定时生成 |
+| 持仓快照 | H2 Database | EOD定时生成 |
 
 ### 7.2 重启恢复流程
 
@@ -882,25 +996,28 @@ if (existing != null) {
 │     - positions.dat → 恢复持仓状态                                          │
 │     - orderbook.dat → 恢复订单簿                                           │
 │     - progress.dat → 读取处理进度                                           │
-│     - processed_trades.dat → 幂等去重表                                     │
+│     - processed.dat → 幂等去重表                                            │
 │                                                                             │
-│  2. 恢复撮合引擎                                                            │
+│  2. 加载交易品种到内存                                                      │
+│     - 从H2数据库读取所有ACTIVE状态的品种                                    │
+│     - 加载到 ConcurrentHashMap<String, Instrument>                         │
+│                                                                             │
+│  3. 恢复撮合引擎                                                            │
 │     - 从 orderbook.dat 重建内存 OrderBook                                   │
 │     - 状态为 PENDING/PARTIAL_FILLED 的订单加入撮合                          │
 │                                                                             │
-│  3. 恢复处理进度                                                            │
+│  4. 恢复处理进度                                                            │
 │     orderIndex = progressMap.get("order_queue_index")                       │
 │     tradeIndex = progressMap.get("trade_queue_index")                       │
 │                                                                             │
-│  4. 启动 MatchingEngine                                                     │
+│  5. 启动 MatchingEngine                                                     │
 │     - 从 orderIndex + 1 开始读取 order_queue                                │
 │                                                                             │
-│  5. 启动 ClearingWorker                                                     │
+│  6. 启动 ClearingWorker                                                     │
 │     - 从 tradeIndex + 1 开始读取 trade_queue                                │
 │     - 对每个成交执行幂等检查                                                 │
 │                                                                             │
-│  6. 启动其他服务                                                            │
-│     - MarketDataWorker                                                      │
+│  7. 启动其他服务                                                            │
 │     - AsyncPersistence                                                      │
 │     - WebSocket 推送服务                                                    │
 │                                                                             │
@@ -1416,10 +1533,12 @@ export default defineConfig({
 
 | 数据 | 大小估算 |
 |------|---------|
-| 账户状态 (1000账户) | ~1MB |
-| 持仓状态 (5000持仓) | ~5MB |
-| 订单簿 (10000订单) | ~10MB |
-| 行情缓存 (5000标的) | ~50MB |
+| 账户状态 (1000账户) | ~1MB (Chronicle Map) |
+| 持仓状态 (5000持仓) | ~5MB (Chronicle Map) |
+| 订单簿 (10000订单) | ~10MB (Chronicle Map) |
+| 成交去重表 | ~5MB (Chronicle Map) |
+| 交易品种 (5000标的) | ~2MB (Java内存) |
+| 行情快照 (5000标的) | ~50MB (Java内存) |
 | Chronicle Queue | ~1GB |
 | JVM堆 | ~10GB |
 | **总计** | **~12GB** |
@@ -1593,11 +1712,10 @@ limitDownPrice = round(preClose * (1 - downLimit))
 │     - 判断是否为交易日                                                      │
 │     - 获取当日交易时段                                                      │
 │                                                                             │
-│  2. 生成交易品种 (INSTRUMENT)                                               │
-│     - 从交易所接口/配置加载当日可交易品种                                   │
-│     - 计算涨跌停价格                                                        │
-│     - 加载期货保证金比例                                                    │
-│     - 加载期权合约规格                                                      │
+│  2. 加载交易品种 (INSTRUMENT)                                               │
+│     - 从H2数据库读取所有ACTIVE状态的品种                                    │
+│     - 加载到Java内存 ConcurrentHashMap<String, Instrument>                 │
+│     - 更新涨跌停价格（根据昨收价计算）                                       │
 │                                                                             │
 │  3. 更新持仓T+1可用                                                         │
 │     - 遍历所有A股持仓                                                       │
@@ -1614,9 +1732,52 @@ limitDownPrice = round(preClose * (1 - downLimit))
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 15.2 INSTRUMENT 数据结构
+### 15.2 EOD (End of Day) 流程
 
-**存储位置**: `instruments.dat` (Chronicle Map)
+**执行时机**：每日收盘后 15:30 执行
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              EOD流程                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. 等待清算完成                                                            │
+│     - 确认所有成交已清算                                                    │
+│     - 确认队列处理进度同步                                                  │
+│                                                                             │
+│  2. 生成账户快照                                                            │
+│     - 遍历所有账户 (accounts.dat)                                           │
+│     - 生成账户快照记录                                                      │
+│     - INSERT INTO account_snapshots (account_id, snapshot_date, ...)        │
+│                                                                             │
+│  3. 生成持仓快照                                                            │
+│     - 遍历所有持仓 (positions.dat)                                          │
+│     - 计算持仓市值                                                          │
+│     - 生成持仓快照记录                                                      │
+│     - INSERT INTO position_snapshots (account_id, symbol, snapshot_date, ...)│
+│                                                                             │
+│  4. 数据归档                                                                │
+│     - 归档当日成交记录                                                      │
+│     - 归档当日订单记录                                                      │
+│     - 清理过期的Chronicle Queue数据（保留7天）                              │
+│                                                                             │
+│  5. 数据校验                                                                │
+│     - 校验快照数据完整性                                                    │
+│     - 校验账户不变式                                                        │
+│     - 校验持仓不变式                                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**快照数据用途**：
+- 账户历史变化查询：查询某日账户余额
+- 持仓历史变化查询：查询某日持仓情况
+- 资产曲线生成：绘制账户资产变化曲线
+- 对账审计：每日余额核对
+
+### 15.3 INSTRUMENT 数据结构
+
+**存储位置**: H2数据库 + Java内存（ConcurrentHashMap）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -1892,7 +2053,440 @@ String hash = SHA256(secretKey + salt);
 
 ---
 
-## 附录
+## 18. 交易时间段配置
+
+### 18.1 交易阶段定义
+
+**A股交易阶段**：
+
+| 阶段代码 | 阶段名称 | 时间段 | 说明 |
+|---------|---------|--------|------|
+| PRE_MARKET | 盘前准备 | 09:10-09:15 | SOD执行，系统初始化 |
+| OPEN_AUCTION | 开盘集合竞价 | 09:15-09:25 | 可申报，不可撤单（09:20后） |
+| OPEN_AUCTION_FREE | 开盘集合竞价自由申报 | 09:15-09:20 | 可申报，可撤单 |
+| OPEN_AUCTION_LOCK | 开盘集合竞价锁单 | 09:20-09:25 | 可申报，不可撤单 |
+| OPEN_MATCH | 开盘撮合 | 09:25-09:30 | 集合竞价撮合，生成开盘价 |
+| MORNING_SECTION | 上午连续竞价 | 09:30-11:30 | 连续竞价，可申报可撤单 |
+| LUNCH_BREAK |午间休市 | 11:30-13:00 | 休市，不接受订单 |
+| AFTERNOON_SECTION | 下午连续竞价 | 13:00-14:57 | 连续竞价，可申报可撤单 |
+| CLOSE_AUCTION_FREE | 收盘集合竞价自由申报 | 14:57-15:00 | 可申报，可撤单 |
+| CLOSE_AUCTION | 收盘集合竞价 | 15:00-15:03 | 可申报，不可撤单 |
+| CLOSE_MATCH | 收盘撮合 | 15:03-15:05 | 集合竞价撮合，生成收盘价 |
+| POST_MARKET | 盘后处理 | 15:05-15:30 | EOD执行，数据归档 |
+| CLOSED | 闭市 | 其他时间 | 不接受订单 |
+
+**期货交易阶段**（IF/IC/IH）：
+
+| 阶段代码 | 阶段名称 | 时间段 | 说明 |
+|---------|---------|--------|------|
+| PRE_MARKET | 盘前准备 | 09:10-09:15 | SOD执行 |
+| MORNING_SECTION | 上午连续竞价 | 09:15-11:30 | 连续竞价 |
+| LUNCH_BREAK | 午间休市 | 11:30-13:00 | 休市 |
+| AFTERNOON_SECTION | 下午连续竞价 | 13:00-15:15 | 连续竞价 |
+| POST_MARKET | 盘后处理 | 15:15-15:30 | EOD执行 |
+| CLOSED | 闭市 | 其他时间 | 不接受订单 |
+
+**期权交易阶段**（50ETF期权）：
+
+| 阶段代码 | 阶段名称 | 时间段 | 说明 |
+|---------|---------|--------|------|
+| PRE_MARKET | 盘前准备 | 09:10-09:15 | SOD执行 |
+| OPEN_AUCTION | 开盘集合竞价 | 09:15-09:25 | 集合竞价 |
+| MORNING_SECTION | 上午连续竞价 | 09:30-11:30 | 连续竞价 |
+| LUNCH_BREAK | 午间休市 | 11:30-13:00 | 休市 |
+| AFTERNOON_SECTION | 下午连续竞价 | 13:00-14:57 | 连续竞价 |
+| CLOSE_AUCTION | 收盘集合竞价 | 14:57-15:00 | 集合竞价 |
+| POST_MARKET | 盘后处理 | 15:00-15:30 | EOD执行 |
+| CLOSED | 闭市 | 其他时间 | 不接受订单 |
+
+### 18.2 交易阶段配置结构
+
+```java
+public enum TradingPhase {
+    PRE_MARKET,           // 盘前准备
+    OPEN_AUCTION_FREE,    // 开盘集合竞价自由申报
+    OPEN_AUCTION_LOCK,    // 开盘集合竞价锁单
+    OPEN_MATCH,           // 开盘撮合
+    MORNING_SECTION,      // 上午连续竞价
+    LUNCH_BREAK,          // 午间休市
+    AFTERNOON_SECTION,    // 下午连续竞价
+    CLOSE_AUCTION_FREE,   // 收盘集合竞价自由申报
+    CLOSE_AUCTION,        // 收盘集合竞价
+    CLOSE_MATCH,          // 收盘撮合
+    POST_MARKET,          // 盘后处理
+    CLOSED                // 闭市
+}
+
+public class TradingSessionConfig {
+    private String instrumentType;      // STOCK / FUTURES / OPTION
+    private List<SessionPeriod> sessions;
+    
+    public static class SessionPeriod {
+        private TradingPhase phase;
+        private LocalTime startTime;
+        private LocalTime endTime;
+        private boolean allowOrder;     // 是否允许下单
+        private boolean allowCancel;    // 是否允许撤单
+        private boolean allowMatch;     // 是否允许撮合
+    }
+}
+```
+
+**A股默认配置**：
+
+```json
+{
+    "instrumentType": "STOCK",
+    "sessions": [
+        { "phase": "PRE_MARKET", "startTime": "09:10", "endTime": "09:15", "allowOrder": false, "allowCancel": false, "allowMatch": false },
+        { "phase": "OPEN_AUCTION_FREE", "startTime": "09:15", "endTime": "09:20", "allowOrder": true, "allowCancel": true, "allowMatch": false },
+        { "phase": "OPEN_AUCTION_LOCK", "startTime": "09:20", "endTime": "09:25", "allowOrder": true, "allowCancel": false, "allowMatch": false },
+        { "phase": "OPEN_MATCH", "startTime": "09:25", "endTime": "09:30", "allowOrder": false, "allowCancel": false, "allowMatch": true },
+        { "phase": "MORNING_SECTION", "startTime": "09:30", "endTime": "11:30", "allowOrder": true, "allowCancel": true, "allowMatch": true },
+        { "phase": "LUNCH_BREAK", "startTime": "11:30", "endTime": "13:00", "allowOrder": false, "allowCancel": false, "allowMatch": false },
+        { "phase": "AFTERNOON_SECTION", "startTime": "13:00", "endTime": "14:57", "allowOrder": true, "allowCancel": true, "allowMatch": true },
+        { "phase": "CLOSE_AUCTION_FREE", "startTime": "14:57", "endTime": "15:00", "allowOrder": true, "allowCancel": true, "allowMatch": false },
+        { "phase": "CLOSE_AUCTION", "startTime": "15:00", "endTime": "15:03", "allowOrder": true, "allowCancel": false, "allowMatch": false },
+        { "phase": "CLOSE_MATCH", "startTime": "15:03", "endTime": "15:05", "allowOrder": false, "allowCancel": false, "allowMatch": true },
+        { "phase": "POST_MARKET", "startTime": "15:05", "endTime": "15:30", "allowOrder": false, "allowCancel": false, "allowMatch": false },
+        { "phase": "CLOSED", "startTime": "00:00", "endTime": "09:10", "allowOrder": false, "allowCancel": false, "allowMatch": false }
+    ]
+}
+```
+
+### 18.3 交易阶段切换机制
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          交易阶段切换流程                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  【阶段切换触发】                                                            │
+│                                                                             │
+│  TradingPhaseManager (单线程定时任务)                                        │
+│       │                                                                     │
+│       │ 每1秒检查一次当前时间                                                │
+│       │                                                                     │
+│       │ 1. 获取当前时间 LocalTime.now()                                     │
+│       │ 2. 查询配置表，确定当前阶段                                          │
+│       │ 3. 如果阶段发生变化:                                                 │
+│       │    - 发布 PhaseChangeEvent                                          │
+│       │    - 通知 MatchingEngine                                            │
+│       │    - 通知 OrderGateway                                              │
+│       │    - 推送 WebSocket phase_update                                    │
+│       ▼                                                                     │
+│                                                                             │
+│  【阶段切换处理】                                                            │
+│                                                                             │
+│  MatchingEngine:                                                            │
+│    - OPEN_MATCH/CLOSE_MATCH: 执行集合竞价撮合                               │
+│    - MORNING_SECTION/AFTERNOON_SECTION: 连续竞价撮合                        │
+│    - LUNCH_BREAK/CLOSED: 暂停撮合                                           │
+│                                                                             │
+│  OrderGateway:                                                              │
+│    - 检查 allowOrder: 是否接受订单                                          │
+│    - 检查 allowCancel: 是否接受撤单                                         │
+│    - 阶段不允许时返回错误: "当前阶段不允许下单/撤单"                          │
+│                                                                             │
+│  WebSocket推送:                                                             │
+│    {                                                                        │
+│        "type": "phase_update",                                              │
+│        "data": {                                                            │
+│            "phase": "MORNING_SECTION",                                      │
+│            "startTime": "09:30",                                            │
+│            "endTime": "11:30",                                              │
+│            "allowOrder": true,                                              │
+│            "allowCancel": true                                              │
+│        }                                                                    │
+│    }                                                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 18.4 集合竞价撮合逻辑
+
+**开盘集合竞价 (09:25-09:30)**：
+
+```
+输入: OPEN_AUCTION_FREE + OPEN_AUCTION_LOCK 阶段收集的所有订单
+
+撮合规则:
+1. 计算开盘价:
+   - 最大成交量原则：找到使成交量最大的价格
+   - 若有多个价格满足，选择离昨收价最近的价格
+   
+2. 撮合执行:
+   - 所有有效订单按开盘价撮合
+   - 价格优先、时间优先
+   
+3. 输出:
+   - 开盘价
+   - 成交列表
+   - 未成交订单进入连续竞价订单簿
+```
+
+**收盘集合竞价 (15:00-15:05)**：
+
+```
+输入: CLOSE_AUCTION_FREE + CLOSE_AUCTION 阶段收集的所有订单
+
+撮合规则:
+1. 计算收盘价:
+   - 最大成交量原则
+   
+2. 撮合执行:
+   - 所有有效订单按收盘价撮合
+   
+3. 输出:
+   - 收盘价
+   - 成交列表
+   - 未成交订单当日自动撤销
+```
+
+### 18.5 配置存储
+
+**H2数据库表**：
+
+```sql
+CREATE TABLE trading_session_config (
+    config_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    instrument_type VARCHAR(20),      -- STOCK / FUTURES / OPTION
+    phase VARCHAR(30),                -- 交易阶段
+    start_time VARCHAR(10),           -- HH:mm
+    end_time VARCHAR(10),             -- HH:mm
+    allow_order BOOLEAN,
+    allow_cancel BOOLEAN,
+    allow_match BOOLEAN,
+    priority INT,                     -- 阶段优先级（用于排序）
+    create_time TIMESTAMP,
+    update_time TIMESTAMP
+);
+
+CREATE TABLE trading_calendar (
+    calendar_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    trade_date DATE,
+    is_trading_day BOOLEAN,
+    market_status VARCHAR(20),        -- OPEN / CLOSED / HOLIDAY
+    remark VARCHAR(200),
+    create_time TIMESTAMP
+);
+```
+
+**说明**：
+- `trading_session_config` 存储各品种的交易时间段配置
+- `trading_calendar` 存储交易日历，SOD时检查当日是否为交易日
+
+---
+
+## 19. 新浪财经品种查询接口
+
+### 19.1 股票列表查询
+
+**沪深A股列表接口**：
+
+| 接口 | URL | 说明 |
+|------|-----|------|
+| 沪市A股 | `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=1000&sort=symbol&asc=1&node=hs_a` | 沪市A股列表 |
+| 深市A股 | `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=1000&sort=symbol&asc=1&node=sz_a` | 深市A股列表 |
+| 创业板 | `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=500&sort=symbol&asc=1&node=cyb` | 创业板列表 |
+| 科创板 | `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=500&sort=symbol&asc=1&node=kcb` | 科创板列表 |
+
+**参数说明**：
+
+| 参数 | 说明 |
+|------|------|
+| page | 页码，从1开始 |
+| num | 每页数量，最大1000 |
+| sort | 排序字段，symbol表示按代码排序 |
+| asc | 升序排列，1为升序 |
+| node | 节点代码，表示市场分类 |
+
+**返回格式**（JSON数组）：
+
+```json
+[
+    {
+        "symbol": "sh600000",
+        "code": "600000",
+        "name": "浦发银行",
+        "trade": "10.05",
+        "pricechange": "0.07",
+        "changepercent": "0.70",
+        "buy": "10.05",
+        "sell": "10.06",
+        "settlement": "-",
+        "open": "9.90",
+        "high": "10.05",
+        "low": "9.90",
+        "volume": 12345678,
+        "amount": 123456789,
+        "ticktime": "15:00:00"
+    },
+    ...
+]
+```
+
+**字段映射**：
+
+| 新浪字段 | 系统字段 | 说明 |
+|---------|---------|------|
+| symbol | - | 带市场前缀的代码 |
+| code | symbol | 股票代码（6位） |
+| name | name | 股票名称 |
+| trade | currentPrice | 当前价 |
+| open | openPrice | 开盘价 |
+| high | highPrice | 最高价 |
+| low | lowPrice | 最低价 |
+| volume | volume | 成交量 |
+| amount | amount | 成交额 |
+
+### 19.2 期货合约列表查询
+
+**期货品种列表接口**：
+
+| 接口 | URL | 说明 |
+|------|-----|------|
+| 股指期货 | `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=100&sort=symbol&asc=1&node=gz_qh` | 股指期货列表 |
+| 商品期货 | `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=500&sort=symbol&asc=1&node=sp_qh` | 商品期货列表 |
+
+**期货合约详情接口**：
+
+```
+https://hq.sinajs.cn/list=nf_IF2306
+```
+
+**返回格式**：
+
+```
+var hq_str_nf_IF2306="IF2306,4100.0,4098.0,4102.0,4095.0,4095.0,4102.0,12345,123456789,300,4100.0,...";
+```
+
+**字段解析**：
+
+| 序号 | 字段 | 说明 |
+|------|------|------|
+| 0 | code | 合约代码 |
+| 1 | open | 开盘价 |
+| 2 | preClose | 昨收价 |
+| 3 | current | 当前价 |
+| 4 | high | 最高价 |
+| 5 | low | 最低价 |
+| 6 | bid | 买一价 |
+| 7 | ask | 卖一价 |
+| 8 | volume | 成交量（手） |
+| 9 | amount | 成交额 |
+
+### 19.3 期权合约列表查询
+
+**50ETF期权列表接口**：
+
+```
+https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Option_Center.getOptionList?underlying=510050&exchange=sh
+```
+
+**参数说明**：
+
+| 参数 | 说明 |
+|------|------|
+| underlying | 标的代码，510050为50ETF |
+| exchange | 交易所，sh为上交所 |
+
+**期权合约详情接口**：
+
+```
+https://hq.sinajs.cn/list=op_sh510050C2306M04100
+```
+
+**期权合约代码格式**：
+
+```
+op_{exchange}{underlying}{type}{expiry}{strike}
+- exchange: sh (上交所)
+- underlying: 510050 (50ETF)
+- type: C (认购) / P (认沽)
+- expiry: 2306 (2023年6月)
+- strike: M04100 (行权价4.100元)
+```
+
+### 19.4 品种数据同步流程
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          品种数据同步流程                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  【SOD品种同步】                                                             │
+│                                                                             │
+│  1. 检查交易日历                                                            │
+│     - 查询 trading_calendar 表                                              │
+│     - 确认当日为交易日                                                      │
+│                                                                             │
+│  2. 同步股票列表                                                            │
+│     - 调用新浪接口获取沪深A股、创业板、科创板列表                            │
+│     - 解析返回数据                                                          │
+│     - 更新 H2 instruments 表（新增/更新）                                   │
+│     - 计算涨跌停价格                                                        │
+│                                                                             │
+│  3. 同步期货合约                                                            │
+│     - 调用新浪接口获取股指期货列表                                          │
+│     - 筛选主力合约和近月合约                                                │
+│     - 更新 H2 instruments 表                                                │
+│     - 加载保证金比例                                                        │
+│                                                                             │
+│  4. 同步期权合约                                                            │
+│     - 调用新浪接口获取50ETF期权列表                                         │
+│     - 筛选当月、下月、下季、隔季合约                                        │
+│     - 更新 H2 instruments 表                                                │
+│     - 加载行权价、到期日                                                    │
+│                                                                             │
+│  5. 加载到内存                                                              │
+│     - 从 H2 读取所有 ACTIVE 状态品种                                        │
+│     - 加载到 ConcurrentHashMap<String, Instrument>                         │
+│                                                                             │
+│  6. 推送品种更新                                                            │
+│     - WebSocket 推送 instrument_list_update                                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 19.5 新浪接口限流策略
+
+| 接口类型 | 限流策略 | 说明 |
+|---------|---------|------|
+| 股票列表 | 1次/分钟 | SOD时批量查询，非交易时段不查询 |
+| 期货列表 | 1次/分钟 | SOD时批量查询 |
+| 期权列表 | 1次/分钟 | SOD时批量查询 |
+| 单只行情 | 3秒/次 | 实时行情轮询 |
+
+**失败重试策略**：
+- 重试次数：3次
+- 重试间隔：1秒、2秒、4秒（指数退避）
+- 超时时间：10秒
+- 失败处理：使用缓存数据，记录告警日志
+
+### 19.6 品种状态管理
+
+**Instrument状态枚举**：
+
+```java
+public enum InstrumentStatus {
+    ACTIVE,       // 正常交易
+    SUSPENDED,    // 停牌
+    DELISTED,     // 退市
+    PRE_LISTING   // 待上市
+}
+```
+
+**状态同步策略**：
+
+| 状态 | 同步方式 | 说明 |
+|------|---------|------|
+| ACTIVE | SOD从新浪同步 | 正常交易品种 |
+| SUSPENDED | 手动设置 / 新浪公告 | 停牌品种不接受订单 |
+| DELISTED | 手动设置 | 退市品种移除 |
+| PRE_LISTING | 手动添加 | 新股待上市 |
+
+---
 
 ### A. 参考文档
 
