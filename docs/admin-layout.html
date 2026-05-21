@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A股交易系统 - 管理端界面设计</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1500px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #fbbf24; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; margin-bottom: 2rem; }
+    svg { width: 100%; min-width: 1400px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card-dot.orange { background: #fb923c; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    .section-title { color: #fbbf24; font-size: 1.1rem; font-weight: 600; margin: 2rem 0 1rem 0; padding-bottom: 0.5rem; border-bottom: 1px solid #1e293b; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Admin Dashboard Layout</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">Copy</button>
+            <button onclick="downloadPNG(this)">PNG</button>
+            <button onclick="downloadPDF(this)">PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options">...</button>
+        </div>
+      </div>
+      <p class="subtitle">管理端界面设计 | 入金上账、账户管理、订单监控、资金流水、品种管理、交易日历</p>
+    </div>
+
+    <!-- ==================== 管理端主页面 ==================== -->
+    <div class="section-title">Admin Dashboard (管理端主页面)</div>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1450 850">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- 浏览器窗口边界 -->
+        <rect x="30" y="30" width="1390" height="790" rx="8" fill="rgba(30, 41, 59, 0.3)" stroke="#334155" stroke-width="1.5"/>
+        <text x="42" y="48" fill="#64748b" font-size="9">Browser Window - Admin Dashboard</text>
+
+        <!-- ===================== 顶部导航栏 ===================== -->
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="#0f172a"/>
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+
+        <!-- Logo -->
+        <text x="60" y="88" fill="#fbbf24" font-size="13" font-weight="700">HFT Admin</text>
+        <text x="150" y="88" fill="#fbbf24" font-size="8">管理后台</text>
+
+        <!-- 菜单项 -->
+        <rect x="250" y="74" width="80" height="28" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="290" y="92" fill="#fbbf24" font-size="9" text-anchor="middle">系统概览</text>
+
+        <text x="360" y="92" fill="#94a3b8" font-size="9">账户管理</text>
+        <text x="440" y="92" fill="#94a3b8" font-size="9">入金管理</text>
+        <text x="520" y="92" fill="#94a3b8" font-size="9">订单监控</text>
+        <text x="600" y="92" fill="#94a3b8" font-size="9">成交查询</text>
+        <text x="680" y="92" fill="#94a3b8" font-size="9">资金流水</text>
+        <text x="760" y="92" fill="#94a3b8" font-size="9">品种管理</text>
+        <text x="840" y="92" fill="#94a3b8" font-size="9">交易日历</text>
+
+        <!-- 管理员信息 -->
+        <text x="1100" y="88" fill="#94a3b8" font-size="8">管理员: admin</text>
+        <text x="1200" y="88" fill="#94a3b8" font-size="8">角色: SUPER_ADMIN</text>
+        <circle cx="1350" cy="84" r="14" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="1350" y="88" fill="#fbbf24" font-size="9" text-anchor="middle">A</text>
+
+        <!-- ===================== 系统概览卡片 ===================== -->
+        <rect x="40" y="132" width="1370" height="160" rx="6" fill="#0f172a"/>
+        <rect x="40" y="132" width="1370" height="160" rx="6" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="725" y="154" fill="white" font-size="11" font-weight="600" text-anchor="middle">系统概览 (SystemOverview.tsx)</text>
+
+        <!-- 统计卡片 -->
+        <rect x="60" y="172" width="200" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#34d399" stroke-width="1"/>
+        <text x="160" y="195" fill="#94a3b8" font-size="8" text-anchor="middle">在线用户数</text>
+        <text x="160" y="225" fill="white" font-size="24" font-weight="700" text-anchor="middle">128</text>
+        <text x="160" y="258" fill="#34d399" font-size="9" text-anchor="middle">↑ 12 较昨日</text>
+
+        <rect x="280" y="172" width="200" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="380" y="195" fill="#94a3b8" font-size="8" text-anchor="middle">今日订单数</text>
+        <text x="380" y="225" fill="white" font-size="24" font-weight="700" text-anchor="middle">15,678</text>
+        <text x="380" y="258" fill="#22d3ee" font-size="9" text-anchor="middle">成交率 87.5%</text>
+
+        <rect x="500" y="172" width="200" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="600" y="195" fill="#94a3b8" font-size="8" text-anchor="middle">今日成交额</text>
+        <text x="600" y="225" fill="white" font-size="24" font-weight="700" text-anchor="middle">2.3亿</text>
+        <text x="600" y="258" fill="#a78bfa" font-size="9" text-anchor="middle">↑ 15.6% 较昨日</text>
+
+        <rect x="720" y="172" width="200" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="820" y="195" fill="#94a3b8" font-size="8" text-anchor="middle">系统TPS</text>
+        <text x="820" y="225" fill="white" font-size="24" font-weight="700" text-anchor="middle">85,432</text>
+        <text x="820" y="258" fill="#fbbf24" font-size="9" text-anchor="middle">P99延迟: 8.2ms</text>
+
+        <rect x="940" y="172" width="200" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="1"/>
+        <text x="1040" y="195" fill="#94a3b8" font-size="8" text-anchor="middle">待处理入金</text>
+        <text x="1040" y="225" fill="white" font-size="24" font-weight="700" text-anchor="middle">5</text>
+        <text x="1040" y="258" fill="#fb7185" font-size="9" text-anchor="middle">需及时处理</text>
+
+        <rect x="1160" y="172" width="200" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#fb923c" stroke-width="1"/>
+        <text x="1260" y="195" fill="#94a3b8" font-size="8" text-anchor="middle">交易阶段</text>
+        <text x="1260" y="225" fill="#34d399" font-size="18" font-weight="700" text-anchor="middle">连续竞价</text>
+        <text x="1260" y="258" fill="#fb923c" font-size="9" text-anchor="middle">09:30-11:30</text>
+
+        <!-- ===================== 左侧：待处理入金列表 ===================== -->
+        <rect x="40" y="306" width="450" height="500" rx="6" fill="#0f172a"/>
+        <rect x="40" y="306" width="450" height="500" rx="6" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="265" y="328" fill="white" font-size="11" font-weight="600" text-anchor="middle">待处理入金请求 (PendingDeposits.tsx)</text>
+        <text x="265" y="342" fill="#fb7185" font-size="7" text-anchor="middle">实时更新 | 点击处理</text>
+
+        <!-- 表头 -->
+        <rect x="55" y="355" width="420" height="28" rx="2" fill="rgba(30, 41, 59, 0.5)"/>
+        <text x="70" y="374" fill="#64748b" font-size="8">时间</text>
+        <text x="140" y="374" fill="#64748b" font-size="8">用户</text>
+        <text x="220" y="374" fill="#64748b" font-size="8">金额</text>
+        <text x="300" y="374" fill="#64748b" font-size="8">状态</text>
+        <text x="380" y="374" fill="#64748b" font-size="8">操作</text>
+
+        <!-- 入金请求行 -->
+        <rect x="55" y="390" width="420" height="45" rx="2" fill="rgba(251, 113, 133, 0.1)" stroke="#fb7185" stroke-width="1"/>
+        <text x="70" y="408" fill="white" font-size="8">10:25:30</text>
+        <text x="140" y="408" fill="white" font-size="8">trader001</text>
+        <text x="220" y="408" fill="#34d399" font-size="9" font-weight="600">+100,000</text>
+        <rect x="300" y="398" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="325" y="411" fill="#fb7185" font-size="7" text-anchor="middle">待处理</text>
+        <rect x="380" y="398" width="80" height="18" rx="3" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="420" y="411" fill="#22d3ee" font-size="7" text-anchor="middle">处理</text>
+        <text x="70" y="428" fill="#94a3b8" font-size="7">备注: 银行转账 工商银行</text>
+
+        <rect x="55" y="442" width="420" height="45" rx="2" fill="rgba(251, 113, 133, 0.1)" stroke="#fb7185" stroke-width="1"/>
+        <text x="70" y="460" fill="white" font-size="8">10:20:15</text>
+        <text x="140" y="460" fill="white" font-size="8">trader002</text>
+        <text x="220" y="460" fill="#34d399" font-size="9" font-weight="600">+500,000</text>
+        <rect x="300" y="450" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="325" y="463" fill="#fb7185" font-size="7" text-anchor="middle">待处理</text>
+        <rect x="380" y="450" width="80" height="18" rx="3" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="420" y="463" fill="#22d3ee" font-size="7" text-anchor="middle">处理</text>
+        <text x="70" y="480" fill="#94a3b8" font-size="7">备注: 银行转账 建设银行</text>
+
+        <rect x="55" y="494" width="420" height="45" rx="2" fill="rgba(251, 113, 133, 0.1)" stroke="#fb7185" stroke-width="1"/>
+        <text x="70" y="512" fill="white" font-size="8">10:15:00</text>
+        <text x="140" y="512" fill="white" font-size="8">trader003</text>
+        <text x="220" y="512" fill="#34d399" font-size="9" font-weight="600">+50,000</text>
+        <rect x="300" y="502" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="325" y="515" fill="#fb7185" font-size="7" text-anchor="middle">待处理</text>
+        <rect x="380" y="502" width="80" height="18" rx="3" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="420" y="515" fill="#22d3ee" font-size="7" text-anchor="middle">处理</text>
+        <text x="70" y="532" fill="#94a3b8" font-size="7">备注: 银行转账 招商银行</text>
+
+        <!-- 已处理入金 -->
+        <text x="55" y="565" fill="#34d399" font-size="9">已处理 (今日)</text>
+
+        <rect x="55" y="578" width="420" height="35" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#34d399" stroke-width="1"/>
+        <text x="70" y="598" fill="#94a3b8" font-size="8">10:10:00</text>
+        <text x="140" y="598" fill="#94a3b8" font-size="8">trader004</text>
+        <text x="220" y="598" fill="#34d399" font-size="9">+200,000</text>
+        <rect x="300" y="588" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="325" y="601" fill="#34d399" font-size="7" text-anchor="middle">已入账</text>
+        <text x="380" y="598" fill="#64748b" font-size="7">admin 10:10:30</text>
+
+        <rect x="55" y="620" width="420" height="35" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="1"/>
+        <text x="70" y="640" fill="#94a3b8" font-size="8">09:45:00</text>
+        <text x="140" y="640" fill="#94a3b8" font-size="8">trader005</text>
+        <text x="220" y="640" fill="#fb7185" font-size="9">-30,000</text>
+        <rect x="300" y="630" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="325" y="643" fill="#fb7185" font-size="7" text-anchor="middle">已拒绝</text>
+        <text x="380" y="640" fill="#64748b" font-size="7">admin 09:45:30</text>
+
+        <!-- 更多 -->
+        <text x="265" y="685" fill="#64748b" font-size="8" text-anchor="middle">查看更多历史记录...</text>
+
+        <!-- ===================== 中间：账户列表 ===================== -->
+        <rect x="506" y="306" width="450" height="500" rx="6" fill="#0f172a"/>
+        <rect x="506" y="306" width="450" height="500" rx="6" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="731" y="328" fill="white" font-size="11" font-weight="600" text-anchor="middle">账户列表 (AccountList.tsx)</text>
+
+        <!-- 搜索和筛选 -->
+        <rect x="521" y="345" width="200" height="24" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="531" y="361" fill="#64748b" font-size="8">搜索用户名/账户ID...</text>
+
+        <rect x="730" y="345" width="100" height="24" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="780" y="361" fill="#94a3b8" font-size="8" text-anchor="middle">全部状态</text>
+
+        <rect x="840" y="345" width="100" height="24" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="890" y="361" fill="#fbbf24" font-size="8" text-anchor="middle">导出Excel</text>
+
+        <!-- 表头 -->
+        <rect x="521" y="378" width="420" height="28" rx="2" fill="rgba(30, 41, 59, 0.5)"/>
+        <text x="536" y="397" fill="#64748b" font-size="8">账户ID</text>
+        <text x="600" y="397" fill="#64748b" font-size="8">用户名</text>
+        <text x="680" y="397" fill="#64748b" font-size="8">总资产</text>
+        <text x="760" y="397" fill="#64748b" font-size="8">持仓市值</text>
+        <text x="840" y="397" fill="#64748b" font-size="8">状态</text>
+
+        <!-- 账户行 -->
+        <rect x="521" y="413" width="420" height="40" rx="2" fill="rgba(34, 211, 238, 0.05)" stroke="#334155" stroke-width="0.5"/>
+        <text x="536" y="432" fill="white" font-size="8">100001</text>
+        <text x="600" y="432" fill="white" font-size="8">trader001</text>
+        <text x="680" y="432" fill="white" font-size="9" font-weight="600">1,234,567</text>
+        <text x="760" y="432" fill="white" font-size="8">789,012</text>
+        <rect x="840" y="420" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="865" y="433" fill="#34d399" font-size="7" text-anchor="middle">正常</text>
+        <text x="536" y="448" fill="#64748b" font-size="7">可用: 567,890 | 盈亏: +12,345</text>
+
+        <rect x="521" y="458" width="420" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="536" y="477" fill="#94a3b8" font-size="8">100002</text>
+        <text x="600" y="477" fill="#94a3b8" font-size="8">trader002</text>
+        <text x="680" y="477" fill="#94a3b8" font-size="9">5,678,901</text>
+        <text x="760" y="477" fill="#94a3b8" font-size="8">4,567,890</text>
+        <rect x="840" y="465" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="865" y="478" fill="#34d399" font-size="7" text-anchor="middle">正常</text>
+        <text x="536" y="493" fill="#64748b" font-size="7">可用: 1,111,011 | 盈亏: +234,567</text>
+
+        <rect x="521" y="503" width="420" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="536" y="522" fill="white" font-size="8">100003</text>
+        <text x="600" y="522" fill="white" font-size="8">trader003</text>
+        <text x="680" y="522" fill="white" font-size="9">234,567</text>
+        <text x="760" y="522" fill="white" font-size="8">180,000</text>
+        <rect x="840" y="510" width="50" height="18" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="865" y="523" fill="#fbbf24" font-size="7" text-anchor="middle">预警</text>
+        <text x="536" y="538" fill="#fbbf24" font-size="7">风险度: 85% | 盈亏: -45,678</text>
+
+        <rect x="521" y="548" width="420" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="1"/>
+        <text x="536" y="567" fill="#94a3b8" font-size="8">100004</text>
+        <text x="600" y="567" fill="#94a3b8" font-size="8">trader004</text>
+        <text x="680" y="567" fill="#94a3b8" font-size="9">56,789</text>
+        <text x="760" y="567" fill="#94a3b8" font-size="8">50,000</text>
+        <rect x="840" y="555" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="865" y="568" fill="#fb7185" font-size="7" text-anchor="middle">冻结</text>
+        <text x="536" y="583" fill="#fb7185" font-size="7">风险度: 95% | 盈亏: -123,456</text>
+
+        <!-- 更多账户 -->
+        <text x="731" y="620" fill="#64748b" font-size="8" text-anchor="middle">... 更多账户 ...</text>
+
+        <!-- 分页 -->
+        <text x="731" y="780" fill="#94a3b8" font-size="8" text-anchor="middle">< 1 2 3 ... 50 ></text>
+
+        <!-- ===================== 右侧：系统状态 ===================== -->
+        <rect x="972" y="306" width="428" height="500" rx="6" fill="#0f172a"/>
+        <rect x="972" y="306" width="428" height="500" rx="6" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="1186" y="328" fill="white" font-size="11" font-weight="600" text-anchor="middle">系统状态 (SystemStatus.tsx)</text>
+
+        <!-- JVM状态 -->
+        <rect x="987" y="348" width="398" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1002" y="368" fill="#22d3ee" font-size="9" font-weight="600">JVM状态</text>
+
+        <text x="1002" y="390" fill="#94a3b8" font-size="8">堆内存使用:</text>
+        <rect x="1080" y="382" width="200" height="10" rx="2" fill="#1e293b"/>
+        <rect x="1080" y="382" width="140" height="10" rx="2" fill="#34d399"/>
+        <text x="1290" y="390" fill="white" font-size="8">70%</text>
+
+        <text x="1002" y="410" fill="#94a3b8" font-size="8">GC暂停:</text>
+        <text x="1080" y="410" fill="#34d399" font-size="8">P99: 2.3ms</text>
+
+        <text x="1002" y="430" fill="#94a3b8" font-size="8">线程数:</text>
+        <text x="1080" y="430" fill="white" font-size="8">156</text>
+
+        <!-- Chronicle状态 -->
+        <rect x="987" y="458" width="398" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1002" y="478" fill="#a78bfa" font-size="9" font-weight="600">Chronicle状态</text>
+
+        <text x="1002" y="500" fill="#94a3b8" font-size="8">Queue写入:</text>
+        <text x="1080" y="500" fill="#34d399" font-size="8">125,678 msg/s</text>
+
+        <text x="1002" y="520" fill="#94a3b8" font-size="8">Map大小:</text>
+        <text x="1080" y="520" fill="white" font-size="8">账户: 128 | 持仓: 456 | 订单: 1,234</text>
+
+        <text x="1002" y="540" fill="#94a3b8" font-size="8">磁盘使用:</text>
+        <rect x="1080" y="532" width="200" height="10" rx="2" fill="#1e293b"/>
+        <rect x="1080" y="532" width="60" height="10" rx="2" fill="#22d3ee"/>
+        <text x="1290" y="540" fill="white" font-size="8">30%</text>
+
+        <!-- 撮合引擎状态 -->
+        <rect x="987" y="568" width="398" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1002" y="588" fill="#fbbf24" font-size="9" font-weight="600">撮合引擎状态</text>
+
+        <text x="1002" y="610" fill="#94a3b8" font-size="8">撮合延迟:</text>
+        <text x="1080" y="610" fill="#34d399" font-size="8">P99: 8.2μs</text>
+
+        <text x="1002" y="630" fill="#94a3b8" font-size="8">订单簿深度:</text>
+        <text x="1080" y="630" fill="white" font-size="8">买: 12,345 | 卖: 11,234</text>
+
+        <text x="1002" y="650" fill="#94a3b8" font-size="8">今日成交:</text>
+        <text x="1080" y="650" fill="white" font-size="8">15,678 笔 | 2.3亿</text>
+
+        <!-- WebSocket状态 -->
+        <rect x="987" y="678" width="398" height="100" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1002" y="698" fill="#34d399" font-size="9" font-weight="600">WebSocket状态</text>
+
+        <text x="1002" y="720" fill="#94a3b8" font-size="8">连接数:</text>
+        <text x="1080" y="720" fill="white" font-size="8">128</text>
+
+        <text x="1002" y="740" fill="#94a3b8" font-size="8">推送速率:</text>
+        <text x="1080" y="740" fill="#34d399" font-size="8">行情: 5,000/s | 订单: 1,200/s</text>
+
+        <text x="1002" y="760" fill="#94a3b8" font-size="8">心跳:</text>
+        <text x="1080" y="760" fill="#34d399" font-size="8">正常 30s</text>
+      </svg>
+    </div>
+
+    <!-- ==================== 入金处理弹窗 ==================== -->
+    <div class="section-title">Deposit Modal (入金处理弹窗)</div>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1450 400">
+        <defs>
+          <pattern id="grid2" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background -->
+        <rect width="100%" height="100%" fill="url(#grid2)" />
+
+        <!-- 背景遮罩 -->
+        <rect x="30" y="30" width="1390" height="340" rx="8" fill="rgba(0, 0, 0, 0.7)"/>
+
+        <!-- 弹窗 -->
+        <rect x="350" y="60" width="750" height="280" rx="8" fill="#0f172a"/>
+        <rect x="350" y="60" width="750" height="280" rx="8" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="2"/>
+
+        <!-- 标题 -->
+        <text x="725" y="90" fill="white" font-size="14" font-weight="600" text-anchor="middle">入金处理</text>
+        <text x="725" y="108" fill="#fbbf24" font-size="8" text-anchor="middle">DepositApproval.tsx</text>
+
+        <!-- 入金信息 -->
+        <rect x="370" y="125" width="350" height="90" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="385" y="145" fill="#94a3b8" font-size="8">用户: trader001</text>
+        <text x="385" y="163" fill="#94a3b8" font-size="8">申请时间: 2026-05-21 10:25:30</text>
+        <text x="385" y="181" fill="#94a3b8" font-size="8">申请金额: </text>
+        <text x="455" y="181" fill="#34d399" font-size="12" font-weight="700">+100,000.00</text>
+        <text x="385" y="199" fill="#94a3b8" font-size="8">备注: 银行转账 工商银行</text>
+
+        <!-- 当前账户信息 -->
+        <rect x="730" y="125" width="350" height="90" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="745" y="145" fill="#94a3b8" font-size="8">当前账户状态</text>
+        <text x="745" y="163" fill="#94a3b8" font-size="8">总资产: 1,134,567.00</text>
+        <text x="745" y="181" fill="#94a3b8" font-size="8">可用资金: 567,890.00</text>
+        <text x="745" y="199" fill="#94a3b8" font-size="8">入金后资产: </text>
+        <text x="835" y="199" fill="#22d3ee" font-size="10" font-weight="600">1,234,567.00</text>
+
+        <!-- 实际入金金额 -->
+        <text x="370" y="240" fill="#94a3b8" font-size="9">实际入金金额:</text>
+        <rect x="480" y="225" width="200" height="28" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="490" y="244" fill="white" font-size="11">100,000.00</text>
+
+        <!-- 审批备注 -->
+        <text x="370" y="280" fill="#94a3b8" font-size="9">审批备注:</text>
+        <rect x="480" y="265" width="350" height="28" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="490" y="284" fill="#64748b" font-size="9">输入审批备注（可选）...</text>
+
+        <!-- 按钮 -->
+        <rect x="370" y="310" width="100" height="32" rx="4" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="420" y="330" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">✓ 批准入金</text>
+
+        <rect x="490" y="310" width="100" height="32" rx="4" fill="rgba(251, 113, 133, 0.3)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="540" y="330" fill="#fb7185" font-size="10" font-weight="600" text-anchor="middle">✗ 拒绝申请</text>
+
+        <rect x="610" y="310" width="80" height="32" rx="4" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="650" y="330" fill="#94a3b8" font-size="10" text-anchor="middle">取消</text>
+      </svg>
+    </div>
+
+    <!-- ==================== 品种管理页面 ==================== -->
+    <div class="section-title">Instrument Management (品种管理页面)</div>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1450 700">
+        <defs>
+          <pattern id="grid3" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background -->
+        <rect width="100%" height="100%" fill="url(#grid3)" />
+
+        <!-- 浏览器窗口 -->
+        <rect x="30" y="30" width="1390" height="640" rx="8" fill="rgba(30, 41, 59, 0.3)" stroke="#334155" stroke-width="1.5"/>
+        <text x="42" y="48" fill="#64748b" font-size="9">Browser Window - Instrument Management</text>
+
+        <!-- 顶部导航栏 -->
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="#0f172a"/>
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="60" y="88" fill="#fbbf24" font-size="13" font-weight="700">HFT Admin</text>
+        <text x="150" y="88" fill="#fbbf24" font-size="8">管理后台</text>
+
+        <text x="360" y="92" fill="#fbbf24" font-size="9">账户管理</text>
+        <text x="440" y="92" fill="#94a3b8" font-size="9">入金管理</text>
+        <text x="520" y="92" fill="#94a3b8" font-size="9">订单监控</text>
+        <text x="600" y="92" fill="#94a3b8" font-size="9">成交查询</text>
+        <rect x="660" y="74" width="80" height="28" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="700" y="92" fill="#fbbf24" font-size="9" text-anchor="middle">品种管理</text>
+        <text x="760" y="92" fill="#94a3b8" font-size="9">交易日历</text>
+
+        <!-- 品种管理内容 -->
+        <rect x="40" y="132" width="1370" height="530" rx="6" fill="#0f172a"/>
+        <rect x="40" y="132" width="1370" height="530" rx="6" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="725" y="154" fill="white" font-size="11" font-weight="600" text-anchor="middle">品种管理 (InstrumentManager.tsx)</text>
+
+        <!-- 操作栏 -->
+        <rect x="60" y="172" width="120" height="32" rx="4" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="120" y="192" fill="#22d3ee" font-size="9" font-weight="600" text-anchor="middle">+ 新增品种</text>
+
+        <rect x="190" y="172" width="100" height="32" rx="4" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="240" y="192" fill="#94a3b8" font-size="9" text-anchor="middle">导入CSV</text>
+
+        <rect x="300" y="172" width="100" height="32" rx="4" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="350" y="192" fill="#94a3b8" font-size="9" text-anchor="middle">导出CSV</text>
+
+        <rect x="420" y="172" width="200" height="32" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="430" y="192" fill="#64748b" font-size="9">搜索代码/名称...</text>
+
+        <rect x="630" y="172" width="100" height="32" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="680" y="192" fill="#94a3b8" font-size="9" text-anchor="middle">全部类型</text>
+
+        <rect x="740" y="172" width="100" height="32" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="790" y="192" fill="#94a3b8" font-size="9" text-anchor="middle">全部状态</text>
+
+        <!-- 品种列表表头 -->
+        <rect x="60" y="220" width="1330" height="30" rx="2" fill="rgba(30, 41, 59, 0.5)"/>
+        <text x="80" y="240" fill="#64748b" font-size="8">代码</text>
+        <text x="160" y="240" fill="#64748b" font-size="8">名称</text>
+        <text x="280" y="240" fill="#64748b" font-size="8">类型</text>
+        <text x="360" y="240" fill="#64748b" font-size="8">交易所</text>
+        <text x="450" y="240" fill="#64748b" font-size="8">最小价位</text>
+        <text x="540" y="240" fill="#64748b" font-size="8">合约乘数</text>
+        <text x="630" y="240" fill="#64748b" font-size="8">保证金率</text>
+        <text x="720" y="240" fill="#64748b" font-size="8">涨跌停</text>
+        <text x="850" y="240" fill="#64748b" font-size="8">状态</text>
+        <text x="950" y="240" fill="#64748b" font-size="8">最后更新</text>
+        <text x="1100" y="240" fill="#64748b" font-size="8">操作</text>
+
+        <!-- 股票品种 -->
+        <rect x="60" y="255" width="1330" height="50" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#34d399" stroke-width="1"/>
+        <text x="80" y="275" fill="white" font-size="9" font-weight="600">600000</text>
+        <text x="160" y="275" fill="white" font-size="9">浦发银行</text>
+        <rect x="280" y="265" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="305" y="278" fill="#22d3ee" font-size="7" text-anchor="middle">股票</text>
+        <text x="360" y="275" fill="#94a3b8" font-size="8">上交所</text>
+        <text x="450" y="275" fill="#94a3b8" font-size="8">0.01</text>
+        <text x="540" y="275" fill="#94a3b8" font-size="8">1</text>
+        <text x="630" y="275" fill="#94a3b8" font-size="8">-</text>
+        <text x="720" y="275" fill="#94a3b8" font-size="8">±10%</text>
+        <rect x="850" y="265" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="875" y="278" fill="#34d399" font-size="7" text-anchor="middle">交易中</text>
+        <text x="950" y="275" fill="#94a3b8" font-size="8">2026-05-20</text>
+        <rect x="1100" y="265" width="50" height="18" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1125" y="278" fill="#94a3b8" font-size="7" text-anchor="middle">编辑</text>
+        <rect x="1160" y="265" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="1185" y="278" fill="#fb7185" font-size="7" text-anchor="middle">停牌</text>
+        <text x="80" y="295" fill="#64748b" font-size="7">昨收: 10.00 | 今日开: 10.05 | 成交量: 1,234,567</text>
+
+        <!-- 期货品种 -->
+        <rect x="60" y="310" width="1330" height="50" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="80" y="330" fill="white" font-size="9" font-weight="600">IF2406</text>
+        <text x="160" y="330" fill="white" font-size="9">沪深300股指期货</text>
+        <rect x="280" y="320" width="50" height="18" rx="3" fill="rgba(167, 139, 250, 0.2)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="305" y="333" fill="#a78bfa" font-size="7" text-anchor="middle">期货</text>
+        <text x="360" y="330" fill="#94a3b8" font-size="8">中金所</text>
+        <text x="450" y="330" fill="#94a3b8" font-size="8">0.2</text>
+        <text x="540" y="330" fill="#94a3b8" font-size="8">300</text>
+        <text x="630" y="330" fill="#94a3b8" font-size="8">12%</text>
+        <text x="720" y="330" fill="#94a3b8" font-size="8">±10%</text>
+        <rect x="850" y="320" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="875" y="333" fill="#34d399" font-size="7" text-anchor="middle">交易中</text>
+        <text x="950" y="330" fill="#94a3b8" font-size="8">2026-05-20</text>
+        <rect x="1100" y="320" width="50" height="18" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1125" y="333" fill="#94a3b8" font-size="7" text-anchor="middle">编辑</text>
+        <rect x="1160" y="320" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="1185" y="333" fill="#fb7185" font-size="7" text-anchor="middle">到期</text>
+        <text x="80" y="350" fill="#64748b" font-size="7">昨收: 3850.0 | 今日开: 3855.0 | 持仓量: 123,456</text>
+
+        <!-- 期权品种 -->
+        <rect x="60" y="365" width="1330" height="50" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="80" y="385" fill="white" font-size="9" font-weight="600">10003720</text>
+        <text x="160" y="385" fill="white" font-size="9">50ETF购6月2500</text>
+        <rect x="280" y="375" width="50" height="18" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="305" y="388" fill="#fbbf24" font-size="7" text-anchor="middle">期权</text>
+        <text x="360" y="385" fill="#94a3b8" font-size="8">上交所</text>
+        <text x="450" y="385" fill="#94a3b8" font-size="8">0.0001</text>
+        <text x="540" y="385" fill="#94a3b8" font-size="8">10000</text>
+        <text x="630" y="385" fill="#94a3b8" font-size="8">-</text>
+        <text x="720" y="385" fill="#94a3b8" font-size="8">-</text>
+        <rect x="850" y="375" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="875" y="388" fill="#34d399" font-size="7" text-anchor="middle">交易中</text>
+        <text x="950" y="385" fill="#94a3b8" font-size="8">2026-05-20</text>
+        <rect x="1100" y="375" width="50" height="18" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1125" y="388" fill="#94a3b8" font-size="7" text-anchor="middle">编辑</text>
+        <rect x="1160" y="375" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="1185" y="388" fill="#fb7185" font-size="7" text-anchor="middle">到期</text>
+        <text x="80" y="405" fill="#64748b" font-size="7">行权价: 2.50 | 到期日: 2026-06-28 | 类型: Call</text>
+
+        <!-- 停牌品种 -->
+        <rect x="60" y="420" width="1330" height="50" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="1"/>
+        <text x="80" y="440" fill="#94a3b8" font-size="9" font-weight="600">600001</text>
+        <text x="160" y="440" fill="#94a3b8" font-size="9">邯郸钢铁</text>
+        <rect x="280" y="430" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="305" y="443" fill="#22d3ee" font-size="7" text-anchor="middle">股票</text>
+        <text x="360" y="440" fill="#94a3b8" font-size="8">上交所</text>
+        <text x="450" y="440" fill="#94a3b8" font-size="8">0.01</text>
+        <text x="540" y="440" fill="#94a3b8" font-size="8">1</text>
+        <text x="630" y="440" fill="#94a3b8" font-size="8">-</text>
+        <text x="720" y="440" fill="#94a3b8" font-size="8">±10%</text>
+        <rect x="850" y="430" width="50" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="875" y="443" fill="#fb7185" font-size="7" text-anchor="middle">停牌</text>
+        <text x="950" y="440" fill="#94a3b8" font-size="8">2026-05-19</text>
+        <rect x="1100" y="430" width="50" height="18" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="1125" y="443" fill="#94a3b8" font-size="7" text-anchor="middle">编辑</text>
+        <rect x="1160" y="430" width="50" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="1185" y="443" fill="#34d399" font-size="7" text-anchor="middle">复牌</text>
+        <text x="80" y="460" fill="#fb7185" font-size="7">停牌原因: 重大事项公告 | 预计复牌: 待定</text>
+
+        <!-- 更多品种 -->
+        <text x="725" y="500" fill="#64748b" font-size="8" text-anchor="middle">... 更多品种 ...</text>
+
+        <!-- 分页 -->
+        <text x="1250" y="630" fill="#94a3b8" font-size="8">< 1 2 3 ... 100 ></text>
+      </svg>
+    </div>
+
+    <!-- ==================== 交易日历管理页面 ==================== -->
+    <div class="section-title">Trading Calendar (交易日历管理)</div>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1450 600">
+        <defs>
+          <pattern id="grid4" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background -->
+        <rect width="100%" height="100%" fill="url(#grid4)" />
+
+        <!-- 浏览器窗口 -->
+        <rect x="30" y="30" width="1390" height="540" rx="8" fill="rgba(30, 41, 59, 0.3)" stroke="#334155" stroke-width="1.5"/>
+        <text x="42" y="48" fill="#64748b" font-size="9">Browser Window - Trading Calendar</text>
+
+        <!-- 顶部导航栏 -->
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="#0f172a"/>
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="60" y="88" fill="#fbbf24" font-size="13" font-weight="700">HFT Admin</text>
+        <text x="150" y="88" fill="#fbbf24" font-size="8">管理后台</text>
+
+        <text x="360" y="92" fill="#94a3b8" font-size="9">账户管理</text>
+        <text x="440" y="92" fill="#94a3b8" font-size="9">入金管理</text>
+        <text x="520" y="92" fill="#94a3b8" font-size="9">订单监控</text>
+        <text x="600" y="92" fill="#94a3b8" font-size="9">成交查询</text>
+        <text x="680" y="92" fill="#94a3b8" font-size="9">品种管理</text>
+        <rect x="740" y="74" width="80" height="28" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="780" y="92" fill="#fbbf24" font-size="9" text-anchor="middle">交易日历</text>
+
+        <!-- 交易日历内容 -->
+        <rect x="40" y="132" width="1370" height="430" rx="6" fill="#0f172a"/>
+        <rect x="40" y="132" width="1370" height="430" rx="6" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="725" y="154" fill="white" font-size="11" font-weight="600" text-anchor="middle">交易日历管理 (TradingCalendar.tsx)</text>
+
+        <!-- 月份选择 -->
+        <rect x="60" y="172" width="40" height="28" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="80" y="190" fill="#94a3b8" font-size="10" text-anchor="middle"><</text>
+        <rect x="110" y="172" width="150" height="28" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="185" y="190" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">2026年5月</text>
+        <rect x="270" y="172" width="40" height="28" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="290" y="190" fill="#94a3b8" font-size="10" text-anchor="middle">></text>
+
+        <rect x="330" y="172" width="100" height="28" rx="4" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="380" y="190" fill="#22d3ee" font-size="9" text-anchor="middle">+ 添加假期</text>
+
+        <rect x="450" y="172" width="100" height="28" rx="4" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="500" y="190" fill="#94a3b8" font-size="9" text-anchor="middle">导入配置</text>
+
+        <rect x="560" y="172" width="100" height="28" rx="4" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="610" y="190" fill="#94a3b8" font-size="9" text-anchor="middle">导出配置</text>
+
+        <!-- 日历表头 -->
+        <rect x="60" y="215" width="1330" height="30" rx="2" fill="rgba(30, 41, 59, 0.5)"/>
+        <text x="150" y="235" fill="#64748b" font-size="9" text-anchor="middle">周一</text>
+        <text x="340" y="235" fill="#64748b" font-size="9" text-anchor="middle">周二</text>
+        <text x="530" y="235" fill="#64748b" font-size="9" text-anchor="middle">周三</text>
+        <text x="720" y="235" fill="#64748b" font-size="9" text-anchor="middle">周四</text>
+        <text x="910" y="235" fill="#64748b" font-size="9" text-anchor="middle">周五</text>
+        <text x="1100" y="235" fill="#fb7185" font-size="9" text-anchor="middle">周六</text>
+        <text x="1290" y="235" fill="#fb7185" font-size="9" text-anchor="middle">周日</text>
+
+        <!-- 日历格子 - 第一周 -->
+        <rect x="60" y="250" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="75" y="270" fill="#64748b" font-size="10">28</text>
+        <text x="75" y="290" fill="#fb7185" font-size="7">非交易日</text>
+
+        <rect x="250" y="250" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="265" y="270" fill="#64748b" font-size="10">29</text>
+        <text x="265" y="290" fill="#fb7185" font-size="7">非交易日</text>
+
+        <rect x="440" y="250" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="455" y="270" fill="#64748b" font-size="10">30</text>
+        <text x="455" y="290" fill="#fb7185" font-size="7">非交易日</text>
+
+        <rect x="630" y="250" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="645" y="270" fill="white" font-size="10" font-weight="600">1</text>
+        <text x="645" y="290" fill="#34d399" font-size="7">交易日</text>
+        <text x="645" y="310" fill="#94a3b8" font-size="6">09:30-11:30</text>
+        <text x="645" y="320" fill="#94a3b8" font-size="6">13:00-15:00</text>
+
+        <rect x="820" y="250" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="835" y="270" fill="white" font-size="10" font-weight="600">2</text>
+        <text x="835" y="290" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="1010" y="250" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1025" y="270" fill="#fb7185" font-size="10">3</text>
+        <text x="1025" y="290" fill="#fb7185" font-size="7">周末休市</text>
+
+        <rect x="1200" y="250" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1215" y="270" fill="#fb7185" font-size="10">4</text>
+        <text x="1215" y="290" fill="#fb7185" font-size="7">周末休市</text>
+
+        <!-- 日历格子 - 第二周 -->
+        <rect x="60" y="335" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="75" y="355" fill="white" font-size="10" font-weight="600">5</text>
+        <text x="75" y="375" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="250" y="335" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="265" y="355" fill="white" font-size="10" font-weight="600">6</text>
+        <text x="265" y="375" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="440" y="335" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="455" y="355" fill="white" font-size="10" font-weight="600">7</text>
+        <text x="455" y="375" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="630" y="335" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="645" y="355" fill="white" font-size="10" font-weight="600">8</text>
+        <text x="645" y="375" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="820" y="335" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="835" y="355" fill="white" font-size="10" font-weight="600">9</text>
+        <text x="835" y="375" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="1010" y="335" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1025" y="355" fill="#fb7185" font-size="10">10</text>
+        <text x="1025" y="375" fill="#fb7185" font-size="7">周末休市</text>
+
+        <rect x="1200" y="335" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1215" y="355" fill="#fb7185" font-size="10">11</text>
+        <text x="1215" y="375" fill="#fb7185" font-size="7">周末休市</text>
+
+        <!-- 日历格子 - 第三周 -->
+        <rect x="60" y="420" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="75" y="440" fill="white" font-size="10" font-weight="600">12</text>
+        <text x="75" y="460" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="250" y="420" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="265" y="440" fill="white" font-size="10" font-weight="600">13</text>
+        <text x="265" y="460" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="440" y="420" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="455" y="440" fill="white" font-size="10" font-weight="600">14</text>
+        <text x="455" y="460" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="630" y="420" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="645" y="440" fill="white" font-size="10" font-weight="600">15</text>
+        <text x="645" y="460" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="820" y="420" width="180" height="80" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="835" y="440" fill="white" font-size="10" font-weight="600">16</text>
+        <text x="835" y="460" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="1010" y="420" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1025" y="440" fill="#fb7185" font-size="10">17</text>
+        <text x="1025" y="460" fill="#fb7185" font-size="7">周末休市</text>
+
+        <rect x="1200" y="420" width="180" height="80" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1215" y="440" fill="#fb7185" font-size="10">18</text>
+        <text x="1215" y="460" fill="#fb7185" font-size="7">周末休市</text>
+
+        <!-- 日历格子 - 第四周（包含假期） -->
+        <rect x="60" y="505" width="180" height="50" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="75" y="525" fill="white" font-size="10" font-weight="600">19</text>
+        <text x="75" y="545" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="250" y="505" width="180" height="50" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="265" y="525" fill="white" font-size="10" font-weight="600">20</text>
+        <text x="265" y="545" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="440" y="505" width="180" height="50" rx="2" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="455" y="525" fill="#fbbf24" font-size="10" font-weight="600">21</text>
+        <text x="455" y="545" fill="#fbbf24" font-size="7">今日</text>
+
+        <rect x="630" y="505" width="180" height="50" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="645" y="525" fill="white" font-size="10" font-weight="600">22</text>
+        <text x="645" y="545" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="820" y="505" width="180" height="50" rx="2" fill="rgba(34, 211, 238, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="835" y="525" fill="white" font-size="10" font-weight="600">23</text>
+        <text x="835" y="545" fill="#34d399" font-size="7">交易日</text>
+
+        <rect x="1010" y="505" width="180" height="50" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1025" y="525" fill="#fb7185" font-size="10">24</text>
+        <text x="1025" y="545" fill="#fb7185" font-size="7">周末休市</text>
+
+        <rect x="1200" y="505" width="180" height="50" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="0.5"/>
+        <text x="1215" y="525" fill="#fb7185" font-size="10">25</text>
+        <text x="1215" y="545" fill="#fb7185" font-size="7">周末休市</text>
+      </svg>
+    </div>
+
+    <!-- ==================== 资金流水管理页面 ==================== -->
+    <div class="section-title">Cashflow Management (资金流水管理)</div>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1450 750">
+        <defs>
+          <pattern id="grid5" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background -->
+        <rect width="100%" height="100%" fill="url(#grid5)" />
+
+        <!-- 浏览器窗口 -->
+        <rect x="30" y="30" width="1390" height="690" rx="8" fill="rgba(30, 41, 59, 0.3)" stroke="#334155" stroke-width="1.5"/>
+        <text x="42" y="48" fill="#64748b" font-size="9">Browser Window - Cashflow Management</text>
+
+        <!-- 顶部导航栏 -->
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="#0f172a"/>
+        <rect x="40" y="60" width="1370" height="56" rx="4" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="60" y="88" fill="#fbbf24" font-size="13" font-weight="700">HFT Admin</text>
+        <text x="150" y="88" fill="#fbbf24" font-size="8">管理后台</text>
+
+        <text x="360" y="92" fill="#94a3b8" font-size="9">账户管理</text>
+        <text x="440" y="92" fill="#94a3b8" font-size="9">入金管理</text>
+        <text x="520" y="92" fill="#94a3b8" font-size="9">订单监控</text>
+        <text x="600" y="92" fill="#94a3b8" font-size="9">成交查询</text>
+        <rect x="660" y="74" width="80" height="28" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="700" y="92" fill="#fbbf24" font-size="9" text-anchor="middle">资金流水</text>
+        <text x="760" y="92" fill="#94a3b8" font-size="9">品种管理</text>
+        <text x="840" y="92" fill="#94a3b8" font-size="9">交易日历</text>
+
+        <!-- 资金流水内容 -->
+        <rect x="40" y="132" width="1370" height="580" rx="6" fill="#0f172a"/>
+        <rect x="40" y="132" width="1370" height="580" rx="6" fill="rgba(120, 53, 15, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="725" y="154" fill="white" font-size="11" font-weight="600" text-anchor="middle">资金流水管理 (CashflowManager.tsx)</text>
+
+        <!-- 筛选栏 -->
+        <rect x="60" y="175" width="200" height="32" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="70" y="195" fill="#64748b" font-size="9">搜索用户名/账户ID...</text>
+
+        <rect x="270" y="175" width="120" height="32" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="330" y="195" fill="#94a3b8" font-size="9" text-anchor="middle">全部类型 ▾</text>
+
+        <rect x="400" y="175" width="120" height="32" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="460" y="195" fill="#94a3b8" font-size="9" text-anchor="middle">全部时间 ▾</text>
+
+        <rect x="530" y="175" width="100" height="32" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="580" y="195" fill="#94a3b8" font-size="9" text-anchor="middle">今日</text>
+
+        <rect x="640" y="175" width="100" height="32" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="690" y="195" fill="#94a3b8" font-size="9" text-anchor="middle">本周</text>
+
+        <rect x="750" y="175" width="100" height="32" rx="3" fill="transparent" stroke="#334155" stroke-width="1"/>
+        <text x="800" y="195" fill="#94a3b8" font-size="9" text-anchor="middle">本月</text>
+
+        <rect x="870" y="175" width="150" height="32" rx="3" fill="rgba(30, 41, 59, 0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="880" y="195" fill="#64748b" font-size="9">开始日期</text>
+        <text x="960" y="195" fill="#94a3b8" font-size="9">~</text>
+        <text x="980" y="195" fill="#64748b" font-size="9">结束日期</text>
+
+        <rect x="1030" y="175" width="100" height="32" rx="4" fill="rgba(34, 211, 238, 0.3)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="1080" y="195" fill="#22d3ee" font-size="9" text-anchor="middle">查询</text>
+
+        <rect x="1140" y="175" width="100" height="32" rx="4" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="1190" y="195" fill="#fbbf24" font-size="9" text-anchor="middle">导出Excel</text>
+
+        <!-- 统计卡片 -->
+        <rect x="60" y="220" width="200" height="60" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#34d399" stroke-width="1"/>
+        <text x="160" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">今日入金</text>
+        <text x="160" y="268" fill="#34d399" font-size="16" font-weight="700" text-anchor="middle">+850,000</text>
+
+        <rect x="280" y="220" width="200" height="60" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#fb7185" stroke-width="1"/>
+        <text x="380" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">今日出金</text>
+        <text x="380" y="268" fill="#fb7185" font-size="16" font-weight="700" text-anchor="middle">-120,000</text>
+
+        <rect x="500" y="220" width="200" height="60" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="600" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">今日手续费</text>
+        <text x="600" y="268" fill="#a78bfa" font-size="16" font-weight="700" text-anchor="middle">-3,456.78</text>
+
+        <rect x="720" y="220" width="200" height="60" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="820" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">今日印花税</text>
+        <text x="820" y="268" fill="#fbbf24" font-size="16" font-weight="700" text-anchor="middle">-4,321.00</text>
+
+        <rect x="940" y="220" width="200" height="60" rx="4" fill="rgba(15, 23, 42, 0.8)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="1040" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">今日净流入</text>
+        <text x="1040" y="268" fill="#22d3ee" font-size="16" font-weight="700" text-anchor="middle">+722,222.22</text>
+
+        <!-- 流水列表表头 -->
+        <rect x="60" y="295" width="1330" height="30" rx="2" fill="rgba(30, 41, 59, 0.5)"/>
+        <text x="80" y="315" fill="#64748b" font-size="8">流水ID</text>
+        <text x="160" y="315" fill="#64748b" font-size="8">时间</text>
+        <text x="280" y="315" fill="#64748b" font-size="8">账户</text>
+        <text x="380" y="315" fill="#64748b" font-size="8">用户名</text>
+        <text x="480" y="315" fill="#64748b" font-size="8">类型</text>
+        <text x="580" y="315" fill="#64748b" font-size="8">金额</text>
+        <text x="700" y="315" fill="#64748b" font-size="8">余额</text>
+        <text x="820" y="315" fill="#64748b" font-size="8">关联订单/成交</text>
+        <text x="980" y="315" fill="#64748b" font-size="8">备注</text>
+        <text x="1180" y="315" fill="#64748b" font-size="8">操作人</text>
+
+        <!-- 流水行 - 入金 -->
+        <rect x="60" y="330" width="1330" height="40" rx="2" fill="rgba(34, 211, 238, 0.05)" stroke="#34d399" stroke-width="1"/>
+        <text x="80" y="352" fill="white" font-size="8">CF20260521001</text>
+        <text x="160" y="352" fill="white" font-size="8">10:25:30</text>
+        <text x="280" y="352" fill="white" font-size="8">100001</text>
+        <text x="380" y="352" fill="white" font-size="8">trader001</text>
+        <rect x="480" y="340" width="60" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#34d399" stroke-width="1"/>
+        <text x="510" y="353" fill="#34d399" font-size="7" text-anchor="middle">入金</text>
+        <text x="580" y="352" fill="#34d399" font-size="9" font-weight="600">+100,000.00</text>
+        <text x="700" y="352" fill="white" font-size="8">1,234,567.00</text>
+        <text x="820" y="352" fill="#64748b" font-size="7">-</text>
+        <text x="980" y="352" fill="#94a3b8" font-size="7">银行转账 工商银行</text>
+        <text x="1180" y="352" fill="#fbbf24" font-size="8">admin</text>
+        <text x="80" y="365" fill="#64748b" font-size="7">审批备注: 审核通过</text>
+
+        <!-- 流水行 - 买入成交 -->
+        <rect x="60" y="375" width="1330" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="80" y="397" fill="#94a3b8" font-size="8">CF20260521002</text>
+        <text x="160" y="397" fill="#94a3b8" font-size="8">10:30:15</text>
+        <text x="280" y="397" fill="#94a3b8" font-size="8">100001</text>
+        <text x="380" y="397" fill="#94a3b8" font-size="8">trader001</text>
+        <rect x="480" y="385" width="60" height="18" rx="3" fill="rgba(167, 139, 250, 0.2)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="510" y="398" fill="#a78bfa" font-size="7" text-anchor="middle">买入</text>
+        <text x="580" y="397" fill="#fb7185" font-size="9" font-weight="600">-10,000.00</text>
+        <text x="700" y="397" fill="#94a3b8" font-size="8">1,224,567.00</text>
+        <text x="820" y="397" fill="#22d3ee" font-size="7">T20260521001</text>
+        <text x="980" y="397" fill="#94a3b8" font-size="7">买入 600000 1000股@10.00</text>
+        <text x="1180" y="397" fill="#64748b" font-size="8">系统</text>
+        <text x="80" y="410" fill="#64748b" font-size="7">冻结资金解冻: +500.00</text>
+
+        <!-- 流水行 - 手续费 -->
+        <rect x="60" y="420" width="1330" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="80" y="442" fill="#94a3b8" font-size="8">CF20260521003</text>
+        <text x="160" y="442" fill="#94a3b8" font-size="8">10:30:15</text>
+        <text x="280" y="442" fill="#94a3b8" font-size="8">100001</text>
+        <text x="380" y="442" fill="#94a3b8" font-size="8">trader001</text>
+        <rect x="480" y="430" width="60" height="18" rx="3" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="510" y="443" fill="#fbbf24" font-size="7" text-anchor="middle">手续费</text>
+        <text x="580" y="442" fill="#fb7185" font-size="9" font-weight="600">-30.00</text>
+        <text x="700" y="442" fill="#94a3b8" font-size="8">1,224,537.00</text>
+        <text x="820" y="442" fill="#22d3ee" font-size="7">T20260521001</text>
+        <text x="980" y="442" fill="#94a3b8" font-size="7">买入手续费 万分之三</text>
+        <text x="1180" y="442" fill="#64748b" font-size="8">系统</text>
+
+        <!-- 流水行 - 卖出成交 -->
+        <rect x="60" y="465" width="1330" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="80" y="487" fill="#94a3b8" font-size="8">CF20260521004</text>
+        <text x="160" y="487" fill="#94a3b8" font-size="8">10:35:22</text>
+        <text x="280" y="487" fill="#94a3b8" font-size="8">100001</text>
+        <text x="380" y="487" fill="#94a3b8" font-size="8">trader001</text>
+        <rect x="480" y="475" width="60" height="18" rx="3" fill="rgba(34, 211, 238, 0.2)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="510" y="488" fill="#22d3ee" font-size="7" text-anchor="middle">卖出</text>
+        <text x="580" y="487" fill="#34d399" font-size="9" font-weight="600">+15,000.00</text>
+        <text x="700" y="487" fill="#94a3b8" font-size="8">1,239,537.00</text>
+        <text x="820" y="487" fill="#22d3ee" font-size="7">T20260521002</text>
+        <text x="980" y="487" fill="#94a3b8" font-size="7">卖出 600000 1500股@10.00</text>
+        <text x="1180" y="487" fill="#64748b" font-size="8">系统</text>
+
+        <!-- 流水行 - 印花税 -->
+        <rect x="60" y="510" width="1330" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="80" y="532" fill="#94a3b8" font-size="8">CF20260521005</text>
+        <text x="160" y="532" fill="#94a3b8" font-size="8">10:35:22</text>
+        <text x="280" y="532" fill="#94a3b8" font-size="8">100001</text>
+        <text x="380" y="532" fill="#94a3b8" font-size="8">trader001</text>
+        <rect x="480" y="520" width="60" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="510" y="533" fill="#fb7185" font-size="7" text-anchor="middle">印花税</text>
+        <text x="580" y="532" fill="#fb7185" font-size="9" font-weight="600">-15.00</text>
+        <text x="700" y="532" fill="#94a3b8" font-size="8">1,239,522.00</text>
+        <text x="820" y="532" fill="#22d3ee" font-size="7">T20260521002</text>
+        <text x="980" y="532" fill="#94a3b8" font-size="7">卖出印花税 千分之一</text>
+        <text x="1180" y="532" fill="#64748b" font-size="8">系统</text>
+
+        <!-- 流水行 - 出金 -->
+        <rect x="60" y="555" width="1330" height="40" rx="2" fill="rgba(251, 113, 133, 0.05)" stroke="#fb7185" stroke-width="1"/>
+        <text x="80" y="577" fill="white" font-size="8">CF20260521006</text>
+        <text x="160" y="577" fill="white" font-size="8">11:00:00</text>
+        <text x="280" y="577" fill="white" font-size="8">100002</text>
+        <text x="380" y="577" fill="white" font-size="8">trader002</text>
+        <rect x="480" y="565" width="60" height="18" rx="3" fill="rgba(251, 113, 133, 0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="510" y="578" fill="#fb7185" font-size="7" text-anchor="middle">出金</text>
+        <text x="580" y="577" fill="#fb7185" font-size="9" font-weight="600">-50,000.00</text>
+        <text x="700" y="577" fill="white" font-size="8">5,628,901.00</text>
+        <text x="820" y="577" fill="#64748b" font-size="7">-</text>
+        <text x="980" y="577" fill="#94a3b8" font-size="7">银行转账 建设银行</text>
+        <text x="1180" y="577" fill="#fbbf24" font-size="8">admin</text>
+        <text x="80" y="590" fill="#64748b" font-size="7">审批备注: 审核通过</text>
+
+        <!-- 流水行 - 期货保证金 -->
+        <rect x="60" y="600" width="1330" height="40" rx="2" fill="rgba(15, 23, 42, 0.8)" stroke="#334155" stroke-width="0.5"/>
+        <text x="80" y="622" fill="#94a3b8" font-size="8">CF20260521007</text>
+        <text x="160" y="622" fill="#94a3b8" font-size="8">11:15:30</text>
+        <text x="280" y="622" fill="#94a3b8" font-size="8">100001</text>
+        <text x="380" y="622" fill="#94a3b8" font-size="8">trader001</text>
+        <rect x="480" y="610" width="60" height="18" rx="3" fill="rgba(167, 139, 250, 0.2)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="510" y="623" fill="#a78bfa" font-size="7" text-anchor="middle">保证金</text>
+        <text x="580" y="622" fill="#fb7185" font-size="9" font-weight="600">-92,400.00</text>
+        <text x="700" y="622" fill="#94a3b8" font-size="8">1,147,122.00</text>
+        <text x="820" y="622" fill="#22d3ee" font-size="7">T20260521003</text>
+        <text x="980" y="622" fill="#94a3b8" font-size="7">开多 IF2406 2手 保证金12%</text>
+        <text x="1180" y="622" fill="#64748b" font-size="8">系统</text>
+
+        <!-- 更多流水 -->
+        <text x="725" y="670" fill="#64748b" font-size="8" text-anchor="middle">... 更多流水记录 ...</text>
+
+        <!-- 分页 -->
+        <text x="1250" y="690" fill="#94a3b8" font-size="8">< 1 2 3 ... 100 ></text>
+      </svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>系统概览 (Dashboard)</h3>
+        </div>
+        <ul>
+          <li>在线用户数: 实时统计</li>
+          <li>今日订单数: 成交率统计</li>
+          <li>今日成交额: 金额统计</li>
+          <li>系统TPS: 实时吞吐量</li>
+          <li>P99延迟: 性能监控</li>
+          <li>待处理入金: 需及时处理</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>入金管理 (Deposit)</h3>
+        </div>
+        <ul>
+          <li>待处理入金列表: 实时更新</li>
+          <li>入金审批: 批准/拒绝</li>
+          <li>实际入金金额: 可调整</li>
+          <li>审批备注: 可选填写</li>
+          <li>历史记录: 已处理入金</li>
+          <li>入金来源: 银行转账备注</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>账户管理 (Accounts)</h3>
+        </div>
+        <ul>
+          <li>账户列表: 分页查询</li>
+          <li>账户状态: 正常/预警/冻结</li>
+          <li>资产统计: 总资产/持仓市值</li>
+          <li>风险监控: 风险度百分比</li>
+          <li>盈亏统计: 实时盈亏</li>
+          <li>导出功能: Excel导出</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>品种管理 (Instruments)</h3>
+        </div>
+        <ul>
+          <li>品种类型: 股票/期货/期权</li>
+          <li>品种状态: 交易中/停牌/到期</li>
+          <li>合约参数: 最小价位/乘数/保证金</li>
+          <li>涨跌停限制: 百分比设置</li>
+          <li>批量导入: CSV导入</li>
+          <li>停牌/复牌: 状态切换</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>资金流水 (Cashflow)</h3>
+        </div>
+        <ul>
+          <li>流水类型: 入金/出金/买入/卖出/手续费/印花税/保证金</li>
+          <li>用户筛选: 按账户ID/用户名查询</li>
+          <li>时间筛选: 今日/本周/本月/自定义</li>
+          <li>关联查询: 关联订单/成交ID</li>
+          <li>统计汇总: 入金/出金/手续费/印花税/净流入</li>
+          <li>导出功能: Excel导出</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>交易日历 (Calendar)</h3>
+        </div>
+        <ul>
+          <li>日历视图: 月历展示</li>
+          <li>交易日标记: 绿色高亮</li>
+          <li>休市日标记: 红色显示</li>
+          <li>假期设置: 添加假期</li>
+          <li>交易时段: 09:30-11:30, 13:00-15:00</li>
+          <li>配置导入导出: JSON/CSV</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot orange"></div>
+          <h3>系统监控 (Monitoring)</h3>
+        </div>
+        <ul>
+          <li>JVM状态: 堆内存/GC/线程</li>
+          <li>Chronicle状态: Queue/Map</li>
+          <li>撮合引擎: 延迟/订单簿深度</li>
+          <li>WebSocket: 连接数/推送速率</li>
+          <li>磁盘使用: 存储监控</li>
+          <li>实时刷新: 5秒间隔</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="footer">
+      A股交易系统管理端界面设计 | 2026-05-21 | React 18 + Ant Design 5 | 深色主题 | 新增资金流水管理页面
+    </p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = 'Copied!';
+      } catch (e) { btn.textContent = 'Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'admin-dashboard-layout.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = 'Done!';
+      } catch (e) { btn.textContent = 'Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('admin-dashboard-layout.pdf');
+        btn.textContent = 'Done!';
+      } catch (e) { btn.textContent = 'Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>
