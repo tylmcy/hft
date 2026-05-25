@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>线程工作模型数据流图 V2</title>
+    <title>线程工作模型数据流图 V9</title>
     <style>
         * {
             margin: 0;
@@ -291,24 +291,30 @@
     </style>
 </head>
 <body>
-    <h1>🧵 线程工作模型数据流图 V2</h1>
+    <h1>🧵 线程工作模型数据流图 V9</h1>
 
     <div class="diagram-container">
 
         <!-- ==================== 重要变更说明 ==================== -->
         <div class="change-box">
-            <div class="change-title">⚠️ V2 重要变更</div>
+            <div class="change-title">⚠️ V9 重要变更</div>
             <div class="index-item">
-                <span>1. <strong>Order Queue 和 Cancel Queue 合并</strong> - 统一为 Order Queue，包含 NEW_ORDER 和 CANCEL_ORDER 两种类型</span>
+                <span>1. <strong>JVM内存为主存储</strong> - ConcurrentHashMap存储账户/持仓/订单，Chronicle Map仅用于快照持久化</span>
             </div>
             <div class="index-item">
-                <span>2. <strong>ClearingWorker 按 AccountId 分片</strong> - 同一账户的操作在同一线程串行化，减少 compute 调用</span>
+                <span>2. <strong>单线程Worker批量处理</strong> - AccountWorker/MatchingEngine/ClearingWorker各单线程，批量处理提升吞吐</span>
             </div>
             <div class="index-item">
-                <span>3. <strong>MatchingEngine 支持多 Symbol</strong> - 单线程处理所有 Symbol，每个 Symbol 独立 OrderBook</span>
+                <span>3. <strong>SNAPSHOT事件触发快照</strong> - SnapshotWorker写入SNAPSHOT事件到CQ，Worker处理时自然暂停后续事件</span>
             </div>
             <div class="index-item">
-                <span>4. <strong>OrderBook 持久化到 Chronicle Map</strong> - orderbook.dat 存储所有挂单状态，重启后恢复</span>
+                <span>4. <strong>独立快照文件命名</strong> - account_snapshot_{cq_index}.dat, orderbook_snapshot_{cq_index}.dat, clearing_index.dat</span>
+            </div>
+            <div class="index-item">
+                <span>5. <strong>CompletableFuture同步</strong> - HTTP下单使用CompletableFuture.await(5s)等待冻结完成</span>
+            </div>
+            <div class="index-item">
+                <span>6. <strong>RPO = 0</strong> - CQ事件持久化到磁盘，重启后从快照+CQ增量恢复，数据零丢失</span>
             </div>
         </div>
 
@@ -456,7 +462,7 @@
                     <div class="step-num">4</div>
                     <div class="step-content">
                         <div class="step-thread">MatchingEngine Thread (同一线程)</div>
-                        <div class="step-action">生成 TradeEvent / CancelEvent，写入 Trade Queue</div>
+                        <div class="step-action">生成 TradeEvent / CancelEvent / ORDER_UPDATE，写入 Trade Queue</div>
                         <div class="step-storage">写入: trade_queue.dat (Chronicle Queue)</div>
                     </div>
                 </div>
@@ -500,15 +506,24 @@
                     <div class="step-num">1</div>
                     <div class="step-content">
                         <div class="step-thread">ClearingWorker Thread (单线程)</div>
-                        <div class="step-action">从 Trade Queue 读取 TradeEvent</div>
+                        <div class="step-action">从 Trade Queue 读取事件 (ORDER_UPDATE/TRADE/CANCEL)</div>
                         <div class="step-storage">读取: trade_queue.dat (ExcerptTailer)</div>
                     </div>
                 </div>
 
                 <div class="flow-step">
-                    <div class="step-num">2</div>
+                    <div class="step-num">2a</div>
                     <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-thread">ClearingWorker Thread (ORDER_UPDATE事件)</div>
+                        <div class="step-action">更新订单状态: PENDING → NEW (订单已入OrderBook)</div>
+                        <div class="step-storage">写入: orders.cm (内存状态更新)</div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="step-num">2b</div>
+                    <div class="step-content">
+                        <div class="step-thread">ClearingWorker Thread (TRADE事件)</div>
                         <div class="step-action">putIfAbsent 幂等检查 (防止重复清算)</div>
                         <div class="step-storage">原子操作: processed_trades.dat (putIfAbsent)</div>
                     </div>
@@ -517,7 +532,7 @@
                 <div class="flow-step">
                     <div class="step-num">3</div>
                     <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-thread">ClearingWorker Thread (TRADE事件)</div>
                         <div class="step-action">compute 原子更新买方账户/持仓</div>
                         <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
                     </div>
@@ -526,7 +541,7 @@
                 <div class="flow-step">
                     <div class="step-num">4</div>
                     <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
+                        <div class="step-thread">ClearingWorker Thread (TRADE事件)</div>
                         <div class="step-action">compute 原子更新卖方账户/持仓</div>
                         <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
                     </div>

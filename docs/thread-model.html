@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A股交易系统 - 线程模型图</title>
+  <title>A股交易系统 - 线程模型图 V9</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
@@ -50,7 +50,7 @@
     <div class="header">
       <div class="header-row">
         <div class="pulse-dot"></div>
-        <h1>Thread Model Diagram</h1>
+        <h1>Thread Model Diagram V9</h1>
         <div class="toolbar">
           <div class="toolbar-actions">
             <button onclick="copyAsImage(this)">📋 Copy</button>
@@ -60,7 +60,7 @@
           <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options">⋯</button>
         </div>
       </div>
-      <p class="subtitle">线程分类 · 并发模型 · Chronicle Map 访问模式 · compute 原子操作</p>
+      <p class="subtitle">线程分类 · 单线程批量处理 · 内存主存储 · SNAPSHOT事件触发快照 · RPO=0</p>
     </div>
 
     <!-- 线程模型总览图 -->
@@ -263,10 +263,10 @@
         <rect x="1370" y="240" width="280" height="100" rx="6" fill="#0f172a"/>
         <rect x="1370" y="240" width="280" height="100" rx="6" fill="rgba(251, 146, 60, 0.15)" stroke="#fb923c" stroke-width="1"/>
         <text x="1510" y="265" fill="white" font-size="11" font-weight="600" text-anchor="middle">Trade Queue</text>
-        <text x="1510" y="282" fill="#fb923c" font-size="8" text-anchor="middle">成交队列</text>
+        <text x="1510" y="282" fill="#fb923c" font-size="8" text-anchor="middle">成交/订单状态队列</text>
         <text x="1385" y="302" fill="#94a3b8" font-size="7">• 生产者: MatchingEngine</text>
         <text x="1385" y="315" fill="#94a3b8" font-size="7">• 消费者: ClearingService</text>
-        <text x="1385" y="328" fill="#34d399" font-size="7" font-weight="600">• 多线程消费，compute 更新</text>
+        <text x="1385" y="328" fill="#34d399" font-size="7" font-weight="600">• ORDER_UPDATE/TRADE/CANCEL</text>
 
         <!-- Market Data Queue -->
         <rect x="1370" y="360" width="280" height="100" rx="6" fill="#0f172a"/>
@@ -289,7 +289,7 @@
 
         <!-- MatchingEngine → Trade Queue -->
         <line x1="610" y1="200" x2="1368" y2="290" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
-        <text x="950" y="230" fill="#34d399" font-size="8" font-weight="600">③ 写入成交</text>
+        <text x="950" y="230" fill="#34d399" font-size="8" font-weight="600">③ 写入 ORDER_UPDATE/TRADE</text>
 
         <!-- Trade Queue → ClearingService -->
         <line x1="1370" y1="290" x2="612" y2="400" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
@@ -403,6 +403,8 @@
         <ul>
           <li>• TradeReader (1): 读 Trade Queue，分发到内存队列</li>
           <li>• ClearingWorker (N): N=CPU核心数，compute 原子更新</li>
+          <li>• ORDER_UPDATE: PENDING→NEW (订单入撮合确认)</li>
+          <li>• TRADE: 幂等清算，更新账户/持仓</li>
           <li>• CancelProcessor (1): 处理撤单解冻</li>
           <li>• Entry 级别锁，不同账户并发执行</li>
           <li>• 推送 WebSocket 成交回报</li>
@@ -483,7 +485,7 @@
 
     <!-- Footer -->
     <p class="footer">
-      A股交易系统 - 线程模型图 · 2026-05-17 · compute 原子操作 + Chronicle Map + 多线程并发
+      A股交易系统 V9 - 线程模型图 · 单线程批量处理 · 内存主存储 · SNAPSHOT事件触发快照 · RPO=0
     </p>
   </div>
 

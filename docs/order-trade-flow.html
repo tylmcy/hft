@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A股交易系统 - 下单与成交流程图</title>
+  <title>A股交易系统 - 下单与成交流程图 V9</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
@@ -60,11 +60,11 @@
           <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options">⋯</button>
         </div>
       </div>
-      <p class="subtitle">下单流程 · 数据流 · 成交后处理 · WebSocket推送</p>
+      <p class="subtitle">下单流程 · 批量处理 · 成交后处理 · WebSocket推送 · RPO=0</p>
     </div>
 
     <!-- 下单流程图 -->
-    <h2 class="section-title">一、下单流程 (Order Flow)</h2>
+    <h2 class="section-title">一、下单流程 (Order Flow) - V9 批量处理</h2>
     <div class="diagram-container">
       <svg viewBox="0 0 1500 600">
         <defs>
@@ -225,7 +225,8 @@
         <rect x="760" y="320" width="140" height="80" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
         <text x="830" y="345" fill="white" font-size="10" font-weight="600" text-anchor="middle">成交队列</text>
         <text x="830" y="360" fill="#fbbf24" font-size="7" text-anchor="middle">Chronicle Queue</text>
-        <text x="830" y="378" fill="#94a3b8" font-size="7" text-anchor="middle">TradeEvent</text>
+        <text x="830" y="378" fill="#94a3b8" font-size="7" text-anchor="middle">ORDER_UPDATE</text>
+        <text x="830" y="391" fill="#94a3b8" font-size="7" text-anchor="middle">/TRADE/CANCEL</text>
 
         <!-- 箭头: 撮合引擎 → 成交队列 -->
         <line x1="720" y1="380" x2="758" y2="360" stroke="#fbbf24" stroke-width="2" marker-end="url(#arrow-orange)"/>
@@ -283,7 +284,7 @@
     </div>
 
     <!-- 成交后数据流 -->
-    <h2 class="section-title">二、成交后数据流 (Trade Flow)</h2>
+    <h2 class="section-title">二、成交后数据流 (Trade Flow) - V9 内存主存储</h2>
     <div class="diagram-container">
       <svg viewBox="0 0 1500 700">
         <defs>
@@ -316,10 +317,10 @@
         <!-- ===================== 成交事件起点 ===================== -->
         <rect x="50" y="80" width="180" height="80" rx="6" fill="#0f172a"/>
         <rect x="50" y="80" width="180" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="140" y="105" fill="white" font-size="11" font-weight="600" text-anchor="middle">成交事件</text>
-        <text x="140" y="120" fill="#34d399" font-size="8" text-anchor="middle">TradeEvent Queue</text>
-        <text x="140" y="138" fill="#94a3b8" font-size="7" text-anchor="middle">tradeId, buyOrderId</text>
-        <text x="140" y="151" fill="#94a3b8" font-size="7" text-anchor="middle">sellOrderId, price, qty</text>
+        <text x="140" y="105" fill="white" font-size="11" font-weight="600" text-anchor="middle">Trade Queue事件</text>
+        <text x="140" y="120" fill="#34d399" font-size="8" text-anchor="middle">ORDER_UPDATE/TRADE</text>
+        <text x="140" y="138" fill="#94a3b8" font-size="7" text-anchor="middle">ORDER_UPDATE: 订单入撮合</text>
+        <text x="140" y="151" fill="#94a3b8" font-size="7" text-anchor="middle">TRADE: 成交清算</text>
 
         <!-- ===================== 清算服务 (compute 原子更新) ===================== -->
         <rect x="280" y="80" width="220" height="180" rx="6" fill="#0f172a"/>
@@ -329,14 +330,14 @@
         <text x="390" y="138" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle">(compute 原子更新)</text>
 
         <!-- 清算步骤 -->
-        <text x="295" y="160" fill="#fbbf24" font-size="8">① 读取成交事件</text>
+        <text x="295" y="160" fill="#fbbf24" font-size="8">① 读取事件</text>
         <text x="295" y="177" fill="#94a3b8" font-size="7">   从 Trade Queue 读取</text>
 
-        <text x="295" y="195" fill="#fbbf24" font-size="8">② 计算交易金额/费用</text>
-        <text x="295" y="212" fill="#94a3b8" font-size="7">   佣金 + 印花税(卖方)</text>
+        <text x="295" y="195" fill="#fbbf24" font-size="8">② ORDER_UPDATE处理</text>
+        <text x="295" y="212" fill="#34d399" font-size="7" font-weight="600">   PENDING → NEW 状态</text>
 
-        <text x="295" y="230" fill="#fbbf24" font-size="8">③ compute 原子更新</text>
-        <text x="295" y="247" fill="#34d399" font-size="7" font-weight="600">   Entry 级别锁，多线程安全</text>
+        <text x="295" y="230" fill="#fbbf24" font-size="8">③ TRADE清算</text>
+        <text x="295" y="247" fill="#94a3b8" font-size="7">   幂等putIfAbsent + compute</text>
 
         <!-- 箭头: 成交事件 → 清算线程 -->
         <line x1="230" y1="120" x2="278" y2="120" stroke="#34d399" stroke-width="2" marker-end="url(#arrow2-green)"/>
@@ -517,11 +518,12 @@
           <h3>成交后处理</h3>
         </div>
         <ul>
-          <li>• 清算服务: compute原子更新账户/持仓</li>
+          <li>• ORDER_UPDATE: PENDING→NEW状态</li>
+          <li>• TRADE: compute原子清算</li>
+          <li>• 幂等检查: putIfAbsent(tradeId)</li>
           <li>• 账户更新: balance、available变动</li>
           <li>• 持仓更新: quantity、available变动</li>
           <li>• T+1规则: 当日买入不可卖出</li>
-          <li>• 保证金: 期货/期权专用计算</li>
           <li>• 异步持久化: 不阻塞主链路</li>
         </ul>
       </div>
@@ -559,7 +561,7 @@
 
     <!-- Footer -->
     <p class="footer">
-      A股交易系统 - 下单与成交流程图 · 2026-05-17 · Chronicle Queue + ZGC + WebSocket实时推送
+      A股交易系统 V9 - 下单与成交流程图 · 内存主存储 · 批量处理 · RPO=0 · SNAPSHOT事件触发快照
     </p>
   </div>
 

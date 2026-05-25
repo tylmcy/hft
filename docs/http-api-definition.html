@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HTTP REST API & WebSocket 接口定义</title>
+    <title>HTTP REST API & WebSocket 接口定义 V9</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -128,7 +128,7 @@
     </style>
 </head>
 <body>
-    <h1>📡 HTTP REST API & WebSocket 接口定义</h1>
+    <h1>📡 HTTP REST API & WebSocket 接口定义 V9</h1>
 
     <div class="container">
 
@@ -342,14 +342,13 @@
     <span class="string">"frozen"</span>: <span class="number">100000</span>,              <span class="comment">// 冻结资金 (分)</span>
     <span class="string">"margin"</span>: <span class="number">45678900</span>,            <span class="comment">// 占用保证金 (分)</span>
     <span class="string">"riskLevel"</span>: <span class="number">45.6</span>,             <span class="comment">// 风险度 (%)</span>
-    <span class="string">"unrealizedPnl"</span>: <span class="number">1234500</span>,        <span class="comment">// 浮动盈亏 (分)</span>
-    <span class="string">"unrealizedPnlRatio"</span>: <span class="number">1.23</span>,     <span class="comment">// 浮盈比例 (%)</span>
-    <span class="string">"initialEquity"</span>: <span class="number">120000000</span>,     <span class="comment">// 期初权益 (分)</span>
-    <span class="string">"deposit"</span>: <span class="number">5000000</span>,            <span class="comment">// 入金 (分)</span>
-    <span class="string">"withdraw"</span>: <span class="number">0</span>,                <span class="comment">// 出金 (分)</span>
-    <span class="string">"commission"</span>: <span class="number">37000</span>,           <span class="comment">// 手续费 (分)</span>
-    <span class="string">"stampDuty"</span>: <span class="number">43400</span>,            <span class="comment">// 印花税 (分)</span>
-    <span class="string">"updateTime"</span>: <span class="number">1716307200000</span>       <span class="comment">// 更新时间</span>
+    <span class="string">"unrealizedPnl"</span>: <span class="string">"1234500"</span>,       <span class="comment">// 浮动盈亏 (分)</span>
+    <span class="string">"unrealizedPnlRatio"</span>: <span class="string">"1.23"</span>,    <span class="comment">// 浮盈比例 (%)</span>
+    <span class="string">"initialEquity"</span>: <span class="string">"120000000"</span>,    <span class="comment">// 期初权益 (分)</span>
+    <span class="string">"deposit"</span>: <span class="string">"5000000"</span>,           <span class="comment">// 入金 (分)</span>
+    <span class="string">"withdraw"</span>: <span class="string">"0"</span>,               <span class="comment">// 出金 (分)</span>
+    <span class="string">"commission"</span>: <span class="string">"37000"</span>,          <span class="comment">// 手续费 (分)，仅计算手续费</span>
+    <span class="string">"updateTime"</span>: <span class="string">"1716307200000"</span>      <span class="comment">// 更新时间</span>
   <span class="key">}
 }</span>
                 </div>
@@ -419,7 +418,7 @@
                     <span class="endpoint">/api/orders</span>
                     <span class="tag order">订单</span>
                 </div>
-                <div class="api-desc">下单接口，支持股票/期货/期权</div>
+                <div class="api-desc">下单接口，支持股票/期货/期权。同步返回orderId（CompletableFuture等待冻结完成），异步成交。</div>
 
                 <h3>请求参数</h3>
                 <div class="code-block">
@@ -1120,12 +1119,11 @@ ws://host:port/ws?token=<span class="string">&lt;jwt_token&gt;</span>
     <span class="string">"symbol"</span>: <span class="string">"600000"</span>,
     <span class="string">"symbolName"</span>: <span class="string">"浦发银行"</span>,
     <span class="string">"side"</span>: <span class="string">"buy"</span>,
-    <span class="string">"price"</span>: <span class="number">1000</span>,
-    <span class="string">"quantity"</span>: <span class="number">50</span>,
-    <span class="string">"amount"</span>: <span class="number">50000</span>,             <span class="comment">// 成交金额 (分)</span>
-    <span class="string">"commission"</span>: <span class="number">25</span>,            <span class="comment">// 手续费 (分)</span>
-    <span class="string">"stampDuty"</span>: <span class="number">0</span>,              <span class="comment">// 印花税 (分)，买入为0</span>
-    <span class="string">"tradeTime"</span>: <span class="number">1716307200000</span>
+    <span class="string">"price"</span>: <span class="string">"1000"</span>,
+    <span class="string">"quantity"</span>: <span class="string">"50"</span>,
+    <span class="string">"amount"</span>: <span class="string">"50000"</span>,            <span class="comment">// 成交金额 (分)</span>
+    <span class="string">"commission"</span>: <span class="string">"25"</span>,           <span class="comment">// 手续费 (分)，仅计算手续费</span>
+    <span class="string">"tradeTime"</span>: <span class="string">"1716307200000"</span>
   <span class="key">}</span>
 <span class="key">}</span>
                 </div>
@@ -1141,14 +1139,18 @@ ws://host:port/ws?token=<span class="string">&lt;jwt_token&gt;</span>
 <span class="key">{</span>
   <span class="string">"type"</span>: <span class="string">"account_update"</span>,
   <span class="string">"data"</span>: <span class="key">{</span>
-    <span class="string">"accountId"</span>: <span class="number">10001</span>,
-    <span class="string">"balance"</span>: <span class="number">123456700</span>,         <span class="comment">// 总资金 (分)</span>
-    <span class="string">"available"</span>: <span class="number">56789000</span>,       <span class="comment">// 可用资金 (分)</span>
-    <span class="string">"frozen"</span>: <span class="number">100000</span>,            <span class="comment">// 冻结资金 (分)</span>
-    <span class="string">"marketValue"</span>: <span class="number">78901200</span>,      <span class="comment">// 持仓市值 (分)</span>
-    <span class="string">"totalAsset"</span>: <span class="number">123456700</span>,      <span class="comment">// 总资产 (分)</span>
-    <span class="string">"unrealizedPnl"</span>: <span class="number">1234500</span>,     <span class="comment">// 浮动盈亏 (分)</span>
-    <span class="string">"updateTime"</span>: <span class="number">1716307200000</span>
+    <span class="string">"accountId"</span>: <span class="string">"10001"</span>,
+    <span class="string">"balance"</span>: <span class="string">"123456700"</span>,        <span class="comment">// 总资金 (分)</span>
+    <span class="string">"available"</span>: <span class="string">"56789000"</span>,      <span class="comment">// 可用资金 (分)</span>
+    <span class="string">"frozen"</span>: <span class="string">"100000"</span>,           <span class="comment">// 冻结资金 (分)</span>
+    <span class="string">"marginFrozen"</span>: <span class="string">"0"</span>,        <span class="comment">// 保证金冻结 (分)，期货/期权专用</span>
+    <span class="string">"orderFrozen"</span>: <span class="string">"100000"</span>,     <span class="comment">// 订单冻结 (分)，股票专用</span>
+    <span class="string">"marketValue"</span>: <span class="string">"78901200"</span>,     <span class="comment">// 持仓市值 (分)</span>
+    <span class="string">"totalAsset"</span>: <span class="string">"123456700"</span>,     <span class="comment">// 总资产 (分)</span>
+    <span class="string">"unrealizedPnl"</span>: <span class="string">"1234500"</span>,    <span class="comment">// 浮动盈亏 (分)</span>
+    <span class="string">"delta"</span>: <span class="string">"-105000"</span>,          <span class="comment">// 变动金额 (分)</span>
+    <span class="string">"reason"</span>: <span class="string">"ORDER_FREEZE"</span>,   <span class="comment">// 变动原因</span>
+    <span class="string">"updateTime"</span>: <span class="string">"1716307200000"</span>
   <span class="key">}</span>
 <span class="key">}</span>
                 </div>
@@ -1284,17 +1286,20 @@ ws://host:port/ws?token=<span class="string">&lt;jwt_token&gt;</span>
             <table>
                 <tr><th>错误码</th><th>说明</th></tr>
                 <tr><td>0</td><td>成功</td></tr>
-                <tr><td>1001</td><td>用户名或密码错误</td></tr>
-                <tr><td>1002</td><td>Token 已过期</td></tr>
-                <tr><td>1003</td><td>无权限访问</td></tr>
-                <tr><td>2001</td><td>账户余额不足</td></tr>
+                <tr><td>1001</td><td>参数无效</td></tr>
+                <tr><td>1002</td><td>请求超时</td></tr>
+                <tr><td>1003</td><td>请求处理中</td></tr>
+                <tr><td>2001</td><td>余额不足</td></tr>
                 <tr><td>2002</td><td>持仓不足</td></tr>
-                <tr><td>2003</td><td>超出涨跌停限制</td></tr>
-                <tr><td>2004</td><td>订单不存在</td></tr>
-                <tr><td>2005</td><td>订单已成交，无法撤单</td></tr>
-                <tr><td>2006</td><td>订单已撤销</td></tr>
-                <tr><td>3001</td><td>标的代码不存在</td></tr>
-                <tr><td>3002</td><td>非交易时段</td></tr>
+                <tr><td>2003</td><td>账户状态异常</td></tr>
+                <tr><td>2004</td><td>账户不存在</td></tr>
+                <tr><td>3001</td><td>订单不存在</td></tr>
+                <tr><td>3002</td><td>订单状态不允许</td></tr>
+                <tr><td>3003</td><td>订单不存在于订单簿</td></tr>
+                <tr><td>4001</td><td>交易阶段不允许</td></tr>
+                <tr><td>4002</td><td>涨跌停限制</td></tr>
+                <tr><td>4003</td><td>品种不存在</td></tr>
+                <tr><td>4004</td><td>自成交风险</td></tr>
                 <tr><td>9999</td><td>系统异常</td></tr>
             </table>
         </div>
