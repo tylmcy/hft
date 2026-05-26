@@ -33,7 +33,7 @@
 
 **文件命名约定**：
 - `.dat`: Chronicle Map快照文件后缀（如 `account_snapshot_12345.dat`）
-- `.cq`: Chronicle Queue事件队列文件后缀（如 `incoming_event.cq`）
+- `.cq`: Chronicle Queue事件队列文件后缀（如 `incoming_event.cq`），实际磁盘文件使用 `.cq4` 扩展名
 - `.checksum`: 校验和文件后缀（如 `account_snapshot_12345.dat.checksum`）
 - 文档中 `orders.cm`、`processed_trades.cm` 等是概念性引用，实际文件使用 `.dat` 后缀
 
@@ -525,6 +525,28 @@ public class OrderBook {
             levels.add(new OrderBookLevel(0, 0));
         }
         return levels;
+    }
+
+    /**
+     * 获取所有卖单（用于自成交检查）
+     */
+    public List<Order> getAsks() {
+        List<Order> allAsks = new ArrayList<>();
+        for (List<Order> ordersAtPrice : askOrders.values()) {
+            allAsks.addAll(ordersAtPrice);
+        }
+        return allAsks;
+    }
+
+    /**
+     * 获取所有买单（用于自成交检查）
+     */
+    public List<Order> getBids() {
+        List<Order> allBids = new ArrayList<>();
+        for (List<Order> ordersAtPrice : bidOrders.values()) {
+            allBids.addAll(ordersAtPrice);
+        }
+        return allBids;
     }
 
     /**
@@ -3004,7 +3026,7 @@ public class CallAuctionProcessor {
             long matchQty = Math.min(buyOrder.remainingQty, sellOrder.remainingQty);
             
             // 生成成交事件
-            tradeCQ.write(new TradeEvent(buyOrder, sellOrder, price, matchQty));
+            tradeQueue.write(new TradeEvent(buyOrder, sellOrder, price, matchQty));
             
             buyOrder.filledQuantity += matchQty;
             buyOrder.remainingQty -= matchQty;
@@ -3562,15 +3584,7 @@ public class AccountWorker implements Runnable {
 
         log.info("Account snapshot completed at cqIndex={}", cqIndex);
     }
-    
-    /**
-     * 从事件列表中查找SNAPSHOT事件
-     */
-    private IncomingEvent findSnapshotEvent(List<IncomingEvent> events) {
-        }
-        return sb.toString();
-    }
-    
+
     /**
      * 从事件列表中查找SNAPSHOT事件
      */
@@ -3582,7 +3596,7 @@ public class AccountWorker implements Runnable {
         }
         return null;
     }
-    
+
     /**
      * 处理单个IncomingEvent事件
      */
@@ -3689,7 +3703,7 @@ public class ClearingWorker implements Runnable {
     
     public void run() {
         while (running) {
-            List<TradeEvent> events = tradeCQ.readBatch(50, 1);
+            List<TradeEvent> events = tradeQueue.readBatch(50, 1);
             
             if (events.isEmpty()) continue;
             
@@ -4022,19 +4036,6 @@ public void recover() {
     log.info("Recovery completed");
 }
 
-private void loadProcessedOrders(long index) {
-    Path file = Paths.get("data/snapshots/processed_orders_" + index + ".dat");
-    if (Files.exists(file)) {
-        ChronicleMap<Long, Boolean> cm = ChronicleMap.createFromFile(file.toString());
-        for (Map.Entry<Long, Boolean> e : cm.entrySet()) {
-            processedOrdersCM.put(e.getKey(), e.getValue());
-        }
-        cm.close();
-        log.info("Loaded {} processed orders from snapshot at index {}",
-                 processedOrdersCM.size(), index);
-    }
-}
-
 private void loadProcessedTrades(long index) {
     Path file = Paths.get("data/snapshots/processed_trades_" + index + ".dat");
     if (Files.exists(file)) {
@@ -4119,6 +4120,8 @@ private Account copyAccount(Account source) {
     copy.frozen = source.frozen;
     copy.marginFrozen = source.marginFrozen;
     copy.orderFrozen = source.orderFrozen;
+    copy.debt = source.debt;
+    copy.unrealizedPnl = source.unrealizedPnl;
     copy.status = source.status;
     copy.riskRatio = source.riskRatio;
     copy.updateTime = source.updateTime;
@@ -4132,11 +4135,13 @@ private Position copyPosition(Position source) {
     Position copy = new Position();
     copy.accountId = source.accountId;
     copy.symbol = source.symbol;
+    copy.symbolCode = source.symbolCode;
     copy.quantity = source.quantity;
     copy.available = source.available;
     copy.frozen = source.frozen;
     copy.t1Locked = source.t1Locked;
-    copy.avgCost = source.avgCost;
+    copy.avgPrice = source.avgPrice;
+    copy.unrealizedPnl = source.unrealizedPnl;
     copy.updateTime = source.updateTime;
     return copy;
 }
