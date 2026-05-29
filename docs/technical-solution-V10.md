@@ -160,8 +160,8 @@ public class TradingConfig {
 │                              │                                              │
 │                              ▼                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                     incoming_event CQ                                │   │
-│  │  (NEW_ORDER/CANCEL_ORDER/UNFREEZE/SETTLEMENT/SNAPSHOT/PHASE_CHANGE)  │   │
+│  │                     account_input CQ                                 │   │
+│  │  (NEW_ORDER/CANCEL_ORDER/SETTLEMENT/SNAPSHOT/PHASE_CHANGE/入金)      │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                              │                                              │
 │                              ▼                                              │
@@ -169,45 +169,73 @@ public class TradingConfig {
 │  │                AccountWorker (单线程，批量处理)                       │   │
 │  │  • 冻结/解冻资金和持仓（内存操作）                                    │   │
 │  │  • 结算转账（内存操作）                                               │   │
+│  │  • 输出: account_output CQ + matching_input CQ                       │   │
 │  │  • 批量唤醒HTTP线程 (CompletableFuture)                              │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                              │                                              │
-│                              ▼                                              │
+│              ├───────────────┴───────────────┐                             │
+│              ▼                               ▼                             │
+│  ┌─────────────────────┐        ┌─────────────────────┐                   │
+│  │   account_output CQ │        │   matching_input CQ │                   │
+│  │ (冻结/解冻/持仓变更) │        │ (下单/撤单/快照)    │                   │
+│  └─────────────────────┘        └─────────────────────┘                   │
+│              │                               │                             │
+│              ▼                               ▼                             │
+│  ┌─────────────────────┐        ┌─────────────────────────────────────┐   │
+│  │ 用于WebSocket推送   │        │              MatchingEngine          │   │
+│  │ (账户/持仓变动)     │        │        (单线程，批量处理)             │   │
+│  └─────────────────────┘        │  • 更新内存OrderBook                 │   │
+│                                 │  • 订单撮合                           │   │
+│                                 │  • 输出: matching_output CQ           │   │
+│                                 │  • 生成成交/状态事件                  │   │
+│                                 └─────────────────────────────────────┘   │
+│                                              │                              │
+│                                              ▼                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                     match_orders CQ                                  │   │
-│  │           (NEW_ORDER/CANCEL_ORDER/SNAPSHOT)                          │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                              │                                              │
-│                              ▼                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │              MatchingEngine (单线程，批量处理)                        │   │
-│  │  • 更新内存OrderBook • 订单撮合 • 生成成交/状态事件                    │   │
-│  │  • 写入ORDER_UPDATE (订单入OrderBook确认)                             │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                              │                                              │
-│                              ▼                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                       trade CQ                                       │   │
-│  │           (ORDER_UPDATE/TRADE/CANCEL)                                │   │
+│  │                     matching_output CQ                               │   │
+│  │           (ORDER_UPDATE/TRADE/CANCEL_SUCCESS/CANCEL_REJECT)          │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                              │                                              │
 │                              ▼                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │              ClearingWorker (单线程，批量处理)                        │   │
-│  │  • 更新orders.cm状态 (PENDING→NEW, PARTIAL_FILLED→FILLED)            │   │
-│  │  • 计算结算金额 • 发送SETTLEMENT/UNFREEZE事件                         │   │
-│  │  • 写入clearing.dat (trades CQ index)                                │   │
+│  │  • 更新订单状态 (PENDING→NEW, PARTIAL_FILLED→FILLED)                 │   │
+│  │  • 计算结算金额                                                      │   │
+│  │  • 输出: account_settlement CQ                                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                              │
+│                              ▼                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     account_settlement CQ                            │   │
+│  │           (SETTLEMENT事件/撤单解冻事件)                               │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                              │
+│                              ▼                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                AccountWorker (处理SETTLEMENT/UNFREEZE)               │   │
+│  │  • 结算转账（内存操作）                                               │   │
+│  │  • WebSocket推送成交/撤单结果                                        │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                              │                                              │
 │                              ▼                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                SnapshotWorker (定时，写入SNAPSHOT事件)                │   │
-│  │  • 写入SNAPSHOT到incoming_event/match_orders CQ                       │   │
+│  │  • 写入SNAPSHOT到account_input/matching_input CQ                      │   │
 │  │  • Worker处理SNAPSHOT时写快照CM → 写index.dat                         │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**CQ文件命名约定**：
+
+| CQ名称 | 用途 | 事件类型 |
+|--------|------|---------|
+| `account_input.cq4` | AccountWorker输入队列 | NEW_ORDER/CANCEL_ORDER/SETTLEMENT/SNAPSHOT/PHASE_CHANGE/入金 |
+| `account_output.cq4` | AccountWorker输出队列（用于WebSocket推送） | 冻结/解冻/加减钱/持仓变更 |
+| `matching_input.cq4` | MatchingEngine输入队列 | NEW_ORDER/CANCEL_ORDER/SNAPSHOT |
+| `matching_output.cq4` | MatchingEngine输出队列 | ORDER_UPDATE/TRADE/CANCEL_SUCCESS/CANCEL_REJECT |
+| `account_settlement.cq4` | ClearingWorker输出队列（AccountWorker消费） | SETTLEMENT事件/撤单解冻事件 |
 
 ### 2.2 数据流图
 
@@ -217,15 +245,16 @@ public class TradingConfig {
 HTTP线程(虚拟线程)
     │
     │ 1. 参数校验、幂等检查
-    │ 2. 写入 incoming_event CQ (NEW_ORDER)
+    │ 2. 写入 account_input CQ (NEW_ORDER)
     │ 3. CompletableFuture.await(5s)
     ▼
 AccountWorker(单线程)
     │
-    │ 4. 批量读取 incoming_event CQ
+    │ 4. 批量读取 account_input CQ
     │ 5. 批量内存更新账户/持仓
-    │ 6. 批量写入 match_orders CQ
-    │ 7. 批量 CompletableFuture.complete()
+    │ 6. 批量写入 matching_input CQ
+    │ 7. 批量写入 account_output CQ (用于WebSocket推送)
+    │ 8. 批量 CompletableFuture.complete()
     ▼
 HTTP线程返回orderId ←─────────────────────────────┘
 
@@ -234,10 +263,10 @@ HTTP线程返回orderId ←─────────────────�
 
 MatchingEngine(单线程)
     │
-    │ 8. 批量读取 match_orders CQ
-    │ 9. 批量更新内存OrderBook
-    │ 10. 批量撮合
-    │ 11. 批量写入 trade CQ
+    │ 9. 批量读取 matching_input CQ
+    │ 10. 批量更新内存OrderBook
+    │ 11. 批量撮合
+    │ 12. 批量写入 matching_output CQ
     ▼
 
 
@@ -245,9 +274,9 @@ MatchingEngine(单线程)
 
 ClearingWorker(单线程)
     │
-    │ 12. 批量读取 trade CQ
-    │ 13. 批量更新订单状态（内存）
-    │ 14. 批量写入 incoming_event CQ (SETTLEMENT/UNFREEZE)
+    │ 13. 批量读取 matching_output CQ
+    │ 14. 批量更新订单状态（内存）
+    │ 15. 批量写入 account_settlement CQ (SETTLEMENT/UNFREEZE)
     ▼
 
 
@@ -255,9 +284,10 @@ ClearingWorker(单线程)
 
 AccountWorker(单线程)
     │
-    │ 15. 批量读取 incoming_event CQ
-    │ 16. 批量内存更新账户/持仓
-    │ 17. WebSocket推送成交/撤单结果
+    │ 16. 批量读取 account_settlement CQ
+    │ 17. 批量内存更新账户/持仓
+    │ 18. 批量写入 account_output CQ (用于WebSocket推送)
+    │ 19. WebSocket推送成交/撤单结果
     ▼
 
 
@@ -265,11 +295,10 @@ AccountWorker(单线程)
 
 SnapshotWorker
     │
-    │ 18. 暂停 AccountWorker/MatchingEngine/ClearingWorker
-    │ 19. 内存数据 → CM快照文件 (accounts_{ver}.dat, positions_{ver}.dat, ...)
-    │ 20. 获取各CQ当前索引
-    │ 21. 写入 index.dat (原子: 先写tmp再rename)
-    │ 22. 恢复 Worker 运行
+    │ 20. 写入SNAPSHOT到 account_input CQ
+    │ 21. 等待 AccountWorker 处理完快照
+    │ 22. 写入SNAPSHOT到 matching_input CQ
+    │ 23. 等待 MatchingEngine 处理完快照
     ▼
 ```
 
@@ -785,11 +814,11 @@ public class InMemoryOrderStore {
 
 ### 3.3 Chronicle Queue 事件结构
 
-#### 3.3.1 incoming_event CQ
+#### 3.3.1 account_input CQ
 
 ```
-IncomingEvent {
-    eventType: enum,      // NEW_ORDER / CANCEL_ORDER / UNFREEZE / SETTLEMENT / SNAPSHOT / PHASE_CHANGE
+AccountInputEvent {
+    eventType: enum,      // NEW_ORDER / CANCEL_ORDER / SETTLEMENT / SNAPSHOT / PHASE_CHANGE / DEPOSIT
     orderId: long,
     accountId: long,
     userId: long,
@@ -807,7 +836,8 @@ IncomingEvent {
     phase: enum,          // CLOSED / CALL_AUCTION_OPEN / CONTINUOUS_TRADING / CALL_AUCTION_CLOSE (仅PHASE_CHANGE事件)
     isSystemOrder: boolean, // 是否系统生成订单（强平/做市）
     systemReason: String,   // 系统订单原因：LIQUIDATION/MAKER
-    reason: String,       // 撤单/拒绝原因 (CANCEL_ORDER/UNFREEZE事件)
+    reason: String,       // 撤单/拒绝原因 (CANCEL_ORDER事件)
+    depositAmount: long,  // 入金金额（仅DEPOSIT事件）
     idempotencyKey: String,
     timestamp: long,
     cqIndex: long         // SNAPSHOT事件专用：CQ写入位置，用于快照文件命名
@@ -818,15 +848,15 @@ IncomingEvent {
 |---------|------|------|
 | NEW_ORDER | HTTP线程 | 下单请求 |
 | CANCEL_ORDER | HTTP线程/EOD | 撤单请求（含EOD自动撤单） |
-| UNFREEZE | ClearingWorker | 解冻请求（撤单/拒绝时） |
-| SETTLEMENT | ClearingWorker | 结算请求（买卖双方各一条，含frozenAmountUsed） |
+| SETTLEMENT | AccountWorker（从account_settlement CQ读取） | 结算请求（买卖双方各一条，含frozenAmountUsed） |
 | SNAPSHOT | SnapshotWorker | 触发快照保存 |
 | PHASE_CHANGE | SnapshotWorker | 交易时段切换（触发集合竞价撮合） |
+| DEPOSIT | 管理员操作 | 入金请求 |
 
-#### 3.3.2 match_orders CQ
+#### 3.3.2 matching_input CQ
 
 ```
-MatchOrderEvent {
+MatchingInputEvent {
     eventType: enum,      // NEW_ORDER / CANCEL_ORDER / SNAPSHOT
     orderId: long,
     symbol: String,
@@ -843,12 +873,12 @@ MatchOrderEvent {
 }
 ```
 
-#### 3.3.3 trade CQ
+#### 3.3.3 matching_output CQ
 
 ```
-TradeEvent {
+MatchingOutputEvent {
     eventType: enum,      // ORDER_UPDATE / TRADE / CANCEL_SUCCESS / CANCEL_REJECT
-    
+
     // ORDER_UPDATE专用字段
     orderId: long,
     accountId: long,
@@ -857,7 +887,7 @@ TradeEvent {
     status: enum,         // NEW / PARTIAL_FILLED / FILLED / CANCELLED
     filledQuantity: long,
     remainingQty: long,
-    
+
     // TRADE专用字段
     tradeId: String,      // 确定性ID: "takerOrderId_makerOrderId"
     symbol: String,       // 成交品种
@@ -873,9 +903,6 @@ TradeEvent {
     sellCommission: long,
 
     // CANCEL_SUCCESS专用字段
-    orderId: long,
-    accountId: long,
-    symbol: String,      // 用于解冻持仓
     unfreezeAmount: long,
     unfreezeQty: long,
     side: enum,
@@ -907,6 +934,68 @@ public String generateTradeId(long takerOrderId, long makerOrderId) {
 
 // 示例：买单12345吃掉卖单67890 → tradeId = "12345_67890"
 ```
+
+#### 3.3.4 account_settlement CQ
+
+```
+AccountSettlementEvent {
+    eventType: enum,      // SETTLEMENT / UNFREEZE
+
+    // SETTLEMENT专用字段
+    orderId: long,
+    accountId: long,
+    symbol: String,
+    tradeId: String,      // 成交ID，用于幂等检查
+    settlementType: enum, // BUYER / SELLER
+    price: long,
+    quantity: long,
+    frozenAmountUsed: long, // 本次结算使用的冻结金额/数量
+    commission: long,
+
+    // UNFREEZE专用字段
+    unfreezeAmount: long,
+    unfreezeQty: long,
+    side: enum,
+
+    timestamp: long
+}
+```
+
+| 事件类型 | 来源 | 说明 |
+|---------|------|------|
+| SETTLEMENT | ClearingWorker | 结算请求（买卖双方各一条） |
+| UNFREEZE | ClearingWorker | 解冻请求（撤单时） |
+
+#### 3.3.5 account_output CQ
+
+```
+AccountOutputEvent {
+    eventType: enum,      // FREEZE / UNFREEZE / BALANCE_CHANGE / POSITION_CHANGE
+    accountId: long,
+    symbol: String,
+
+    // 账户变动
+    balanceDelta: long,
+    availableDelta: long,
+    frozenDelta: long,
+
+    // 持仓变动
+    quantityDelta: long,
+    positionAvailableDelta: long,
+    positionFrozenDelta: long,
+    t1LockedDelta: long,
+
+    reason: String,       // 变动原因
+    timestamp: long
+}
+```
+
+| 事件类型 | 触发时机 | 用途 |
+|---------|---------|------|
+| FREEZE | 下单冻结时 | WebSocket推送账户/持仓变动 |
+| UNFREEZE | 撤单解冻时 | WebSocket推送账户/持仓变动 |
+| BALANCE_CHANGE | 结算/入金时 | WebSocket推送账户变动 |
+| POSITION_CHANGE | 结算时 | WebSocket推送持仓变动 |
 
 ### 3.4 快照索引文件
 
@@ -1044,9 +1133,9 @@ public class FutureManager {
 5. 创建CompletableFuture
    future = futureManager.createFuture(orderId);
 
-6. 写入incoming_event CQ（带异常处理）
+6. 写入account_input CQ（带异常处理）
    try {
-       incomingEventQueue.write(IncomingEvent { eventType: NEW_ORDER, ... });
+       accountInputQueue.write(AccountInputEvent { eventType: NEW_ORDER, ... });
    } catch (Exception e) {
        log.error("CQ write failed: {}", e.getMessage());
        // 回滚：删除内存中的订单
@@ -1067,8 +1156,8 @@ public class FutureManager {
 
 【阶段2: AccountWorker处理】
 
-9. 批量读取incoming_event CQ
-   batch = readBatch(incomingEventQueue, BATCH_SIZE);
+9. 批量读取account_input CQ
+   batch = readBatch(accountInputQueue, BATCH_SIZE);
 
 10. 批量处理
     for (event : batch) {
@@ -1092,9 +1181,9 @@ public class FutureManager {
                 } else {
                     result = positionStore.freezePosition(event.accountId, event.symbol, event.quantity);
                 }
-                
+
                 if (result.isSuccess()) {
-                    matchOrdersEvents.add(createMatchOrderEvent(event));
+                    matchingInputEvents.add(createMatchingInputEvent(event));
                     orderIdsToComplete.add(event.orderId);
                     results.add(ProcessResult.success());
                 } else {
@@ -1110,10 +1199,13 @@ public class FutureManager {
         }
     }
 
-11. 批量写入match_orders CQ
-    batchWrite(matchOrdersQueue, matchOrdersEvents);
+11. 批量写入matching_input CQ
+    batchWrite(matchingInputQueue, matchingInputEvents);
 
-12. 批量唤醒HTTP线程
+12. 批量写入account_output CQ（用于WebSocket推送）
+    batchWrite(accountOutputQueue, accountOutputEvents);
+
+13. 批量唤醒HTTP线程
     for (i = 0; i < orderIdsToComplete.size(); i++) {
         futureManager.complete(orderIdsToComplete.get(i), results.get(i));
     }
@@ -1124,33 +1216,32 @@ public class FutureManager {
 ```
 【MatchingEngine批量处理】
 
-1. 批量读取match_orders CQ
-   batch = readBatch(matchOrdersQueue, BATCH_SIZE);
+1. 批量读取matching_input CQ
+   batch = readBatch(matchingInputQueue, BATCH_SIZE);
 
 2. 按symbol分组（提高缓存命中率）
    grouped = batch.groupBy(event -> event.symbol);
 
 3. 批量撮合
-   trades = [];
+   outputEvents = [];
    for (symbol, events : grouped) {
        OrderBook book = orderBooks.get(symbol);
        for (event : events) {
            switch (event.eventType) {
                case NEW_ORDER:
-                   // 幂等检查：使用订单快照CM（orders_snapshot）
-                   // 重启时从订单快照加载已处理订单ID，用于幂等检查
-                   if (processedOrdersSet.contains(event.orderId)) {
+                   // 幂等检查：使用processed_order_ids
+                   if (processedOrderIds.contains(event.orderId)) {
                        log.warn("Order already processed, skip: {}", event.orderId);
                        continue;
                    }
-                   processedOrdersSet.add(event.orderId);
+                   processedOrderIds.add(event.orderId);
 
                    // 根据订单类型选择撮合方式
                    // 集合竞价期间：订单累积到CallAuctionProcessor，不立即撮合
                    if (currentPhase == CALL_AUCTION_OPEN || currentPhase == CALL_AUCTION_CLOSE) {
                        callAuctionProcessor.addCallAuctionOrder(event);
                        // 仍写入ORDER_UPDATE事件（订单已接收）
-                       trades.add(OrderUpdateEvent {
+                       outputEvents.add(OrderUpdateEvent {
                            orderId: event.orderId,
                            status: NEW,
                            filledQuantity: 0,
@@ -1159,10 +1250,10 @@ public class FutureManager {
                    } else {
                        // 连续竞价期间：正常撮合
                        book.addOrder(event);
-                       trades.addAll(matchOrderByType(book, event));
-                       
+                       outputEvents.addAll(matchOrderByType(book, event));
+
                        // 写入ORDER_UPDATE事件（订单入OrderBook确认）
-                       trades.add(OrderUpdateEvent {
+                       outputEvents.add(OrderUpdateEvent {
                            orderId: event.orderId,
                            status: NEW,
                            filledQuantity: 0,
@@ -1174,7 +1265,7 @@ public class FutureManager {
                case CANCEL_ORDER:
                    order = book.cancelOrder(event.orderId);
                    if (order != null) {
-                       trades.add(CancelSuccessEvent {
+                       outputEvents.add(CancelSuccessEvent {
                            orderId: event.orderId,
                            unfreezeAmount: order.frozenAmount,
                            unfreezeQty: order.remainingQty,
@@ -1182,7 +1273,7 @@ public class FutureManager {
                        });
                    } else {
                        // 撤单失败，返回CANCEL_REJECT
-                       trades.add(CancelRejectEvent {
+                       outputEvents.add(CancelRejectEvent {
                            orderId: event.orderId,
                            rejectReason: determineCancelRejectReason(event.orderId)
                        });
@@ -1197,8 +1288,8 @@ public class FutureManager {
        }
    }
 
-4. 批量写入trade CQ
-   batchWrite(tradeQueue, trades);
+4. 批量写入matching_output CQ
+   batchWrite(matchingOutputQueue, outputEvents);
 
 5. 五档行情推送（每3秒聚合）
    if (timeSinceLastPush > 3000ms) {
@@ -1386,8 +1477,8 @@ public void loadProcessedOrdersFromOrderSnapshot(long snapshotIndex) {
 ```
 【ClearingWorker批量处理】
 
-1. 批量读取trade CQ
-   batch = readBatch(tradeQueue, BATCH_SIZE);
+1. 批量读取matching_output CQ
+   batch = readBatch(matchingOutputQueue, BATCH_SIZE);
 
 2. 批量处理
    settlementEvents = [];
@@ -1409,12 +1500,12 @@ public void loadProcessedOrdersFromOrderSnapshot(long snapshotIndex) {
                break;
 
            case TRADE:
-               // 幂等检查：使用String类型tradeId
-               // tradeId格式: "takerOrderId_makerOrderId"
-               if (processedTradesCM.putIfAbsent(event.tradeId, true) != null) {
+               // 幂等检查：使用processed_trade_ids（内存中维护最新10,000个）
+               if (processedTradeIds.contains(event.tradeId)) {
                    log.warn("Trade already processed, skip: {}", event.tradeId);
                    continue;
                }
+               processedTradeIds.add(event.tradeId);
 
                // 更新订单状态
                orderStore.updateFilledQuantity(event.buyOrderId, event.quantity);
@@ -1441,7 +1532,7 @@ public void loadProcessedOrdersFromOrderSnapshot(long snapshotIndex) {
                // 更新订单剩余冻结金额
                buyOrder.frozenAmount -= frozenAmountUsedBuyer;
 
-               // 生成结算事件
+               // 生成结算事件写入account_settlement CQ
                settlementEvents.add(SETTLEMENT {
                    orderId: event.buyOrderId,
                    accountId: event.buyAccountId,
@@ -1467,7 +1558,7 @@ public void loadProcessedOrdersFromOrderSnapshot(long snapshotIndex) {
                break;
 
            case CANCEL_SUCCESS:
-               // 生成解冻事件
+               // 生成解冻事件写入account_settlement CQ
                settlementEvents.add(UNFREEZE {
                    orderId: event.orderId,
                    accountId: event.accountId,
@@ -1485,11 +1576,8 @@ public void loadProcessedOrdersFromOrderSnapshot(long snapshotIndex) {
        }
    }
 
-3. 批量写入incoming_event CQ
-   batchWrite(incomingEventQueue, settlementEvents);
-
-4. 每批次后写入clearing_index.dat
-   writeClearingIndex(lastProcessedIndex);
+3. 批量写入account_settlement CQ
+   batchWrite(accountSettlementQueue, settlementEvents);
 ```
 
 **幂等保证**：
@@ -1526,48 +1614,50 @@ public void saveProcessedTrades(long cqIndex) {
 ```
 【AccountWorker处理SETTLEMENT/UNFREEZE】
 
-1. 批量读取incoming_event CQ
-   batch = readBatch(incomingEventQueue, BATCH_SIZE);
+1. 批量读取account_settlement CQ
+   batch = readBatch(accountSettlementQueue, BATCH_SIZE);
 
 2. 批量处理
+   accountOutputEvents = [];
    for (event : batch) {
        switch (event.eventType) {
            case SETTLEMENT:
                // 幂等检查：使用settlementId = tradeId + "_" + orderId
                String settlementId = event.tradeId + "_" + event.orderId;
-               if (processedSettlementsCM.putIfAbsent(settlementId, true) != null) {
+               if (processedSettlementIds.contains(settlementId)) {
                    log.warn("Settlement already processed, skip: {}", settlementId);
                    continue;
                }
-               
+               processedSettlementIds.add(settlementId);
+
                if (event.settlementType == BUYER) {
                    // 买方结算（使用event.frozenAmountUsed字段）
                    order = orderStore.getOrder(event.orderId);
                    acc = accountStore.getAccount(event.accountId);
-                   
+
                    // frozenAmountUsed由ClearingWorker计算并传递，代表本次结算使用的冻结金额
                    long frozenUsed = event.frozenAmountUsed;
-                   
+
                    // 1. 解冻本次使用的冻结金额
                    acc.frozen -= frozenUsed;
                    acc.orderFrozen -= frozenUsed;
-                   
+
                    // 2. 计算成交金额和总扣款
                    long tradeAmount = event.price * event.quantity;
                    long totalDeduction = tradeAmount + event.commission;
-                   
+
                    // 3. 从balance扣减成交金额和佣金
                    acc.balance -= totalDeduction;
-                   
+
                    // 4. 退还差额到available（冻结金额 > 实际扣款）
                    long refund = frozenUsed - totalDeduction;
                    if (refund > 0) {
                        acc.available += refund;
                    }
-                   
+
                    // 5. 更新订单剩余冻结金额（用于后续部分成交）
                    order.frozenAmount -= frozenUsed;
-                   
+
                    // 6. 增加持仓
                    pos = positionStore.getPosition(event.accountId, event.symbol);
                    if (pos == null) {
@@ -1576,10 +1666,10 @@ public void saveProcessedTrades(long cqIndex) {
                    }
                    pos.quantity += event.quantity;
                    pos.t1Locked += event.quantity; // A股T+1
-                   
+
                    // 7. 验证不变式
                    assert acc.balance == acc.available + acc.frozen : "账户不变式校验失败";
-                   
+
                } else { // SELLER
                    // 卖方结算
                    Account acc = accountStore.getAccount(event.accountId);
@@ -1623,11 +1713,14 @@ public void saveProcessedTrades(long cqIndex) {
                    assert acc.balance == acc.available + acc.frozen : "账户不变式校验失败";
                    assert Math.abs(pos.quantity) == pos.available + pos.frozen + pos.t1Locked : "持仓不变式校验失败";
                }
-               
+
+               // 写入account_output CQ用于WebSocket推送
+               accountOutputEvents.add(createAccountOutputEvent(event));
+
                // WebSocket推送
                wsPushService.pushTradeReport(event);
                break;
-               
+
            case UNFREEZE:
                if (event.side == BUY) {
                    accountStore.unfreeze(event.accountId, event.frozenAmount);
@@ -1637,26 +1730,22 @@ public void saveProcessedTrades(long cqIndex) {
                // 验证不变式
                Account acc = accountStore.getAccount(event.accountId);
                assert acc.balance == acc.available + acc.frozen : "账户不变式校验失败";
+
+               // 写入account_output CQ用于WebSocket推送
+               accountOutputEvents.add(createUnfreezeOutputEvent(event));
+
                wsPushService.pushCancelResult(event);
-               break;
-
-           case PHASE_CHANGE:
-               // 更新当前交易阶段
-               currentPhase = event.phase;
-               log.info("Trading phase changed to: {}", currentPhase);
-
-               // 如果进入CLOSED阶段，拒绝后续NEW_ORDER事件
-               if (currentPhase == CLOSED) {
-                   log.info("Market closed, subsequent NEW_ORDER events will be rejected");
-               }
                break;
        }
    }
+
+3. 批量写入account_output CQ
+   batchWrite(accountOutputQueue, accountOutputEvents);
 ```
 
 **关键设计说明**：
 
-1. **幂等保证**：AccountWorker使用`processed_settlements CM`记录已处理的结算ID，防止重复结算
+1. **幂等保证**：AccountWorker使用`processed_settlement_ids`记录已处理的结算ID（内存中维护最新10,000个），防止重复结算
 2. **不变式维护**：每次结算后验证`balance = available + frozen`
 3. **部分成交支持**：订单的`frozenAmount`随着成交递减，支持多次部分成交
 
@@ -2584,169 +2673,115 @@ trading:
 
 ### 12.3 Chronicle Queue配置
 
-```java
-// Chronicle Queue 工厂配置
-public class ChronicleQueueConfig {
+```
+Chronicle Queue 工厂配置:
 
-    // incoming_event CQ - 入口事件队列
-    @Bean
-    public SingleChronicleQueue incomingEventQueue() {
-        return SingleChronicleQueueBuilder
-            .binary("data/chronicle/incoming_event")
-            .rollCycle(RollCycles.HOURLY)           // 按小时滚动
-            .blockSize(128L * 1024 * 1024)          // 128MB块大小
-            .bufferSize(256 * 1024)                 // 256KB写缓冲
-            .indexCount(512)                        // 索引槽位数
-            .indexSpacing(16)                       // 索引间隔
-            .wireType(WireType.BINARY)              // 二进制格式
-            .build();
-    }
+// account_input CQ - AccountWorker输入队列
+accountInputQueue:
+    path: "data/chronicle/account_input"
+    rollCycle: HOURLY
+    blockSize: 128MB
+    bufferSize: 256KB
+    wireType: BINARY
 
-    // match_orders CQ - 待撮合订单队列
-    @Bean
-    public SingleChronicleQueue matchOrdersQueue() {
-        return SingleChronicleQueueBuilder
-            .binary("data/chronicle/match_orders")
-            .rollCycle(RollCycles.HOURLY)
-            .blockSize(64L * 1024 * 1024)           // 64MB块大小
-            .bufferSize(128 * 1024)
-            .wireType(WireType.BINARY)
-            .build();
-    }
+// account_output CQ - AccountWorker输出队列（WebSocket推送）
+accountOutputQueue:
+    path: "data/chronicle/account_output"
+    rollCycle: HOURLY
+    blockSize: 64MB
+    bufferSize: 128KB
+    wireType: BINARY
 
-    // trade CQ - 成交事件队列
-    @Bean
-    public SingleChronicleQueue tradeQueue() {
-        return SingleChronicleQueueBuilder
-            .binary("data/chronicle/trade")
-            .rollCycle(RollCycles.HOURLY)
-            .blockSize(64L * 1024 * 1024)
-            .bufferSize(128 * 1024)
-            .wireType(WireType.BINARY)
-            .build();
-    }
-}
+// matching_input CQ - MatchingEngine输入队列
+matchingInputQueue:
+    path: "data/chronicle/matching_input"
+    rollCycle: HOURLY
+    blockSize: 64MB
+    bufferSize: 128KB
+    wireType: BINARY
+
+// matching_output CQ - MatchingEngine输出队列
+matchingOutputQueue:
+    path: "data/chronicle/matching_output"
+    rollCycle: HOURLY
+    blockSize: 64MB
+    bufferSize: 128KB
+    wireType: BINARY
+
+// account_settlement CQ - ClearingWorker输出队列
+accountSettlementQueue:
+    path: "data/chronicle/account_settlement"
+    rollCycle: HOURLY
+    blockSize: 64MB
+    bufferSize: 128KB
+    wireType: BINARY
 ```
 
 **CQ参数说明**：
 
-| 参数 | incoming_event | match_orders | trade | 说明 |
-|------|----------------|--------------|-------|------|
-| blockSize | 128MB | 64MB | 64MB | 内存映射文件块大小 |
-| bufferSize | 256KB | 128KB | 128KB | 写缓冲大小 |
-| rollCycle | HOURLY | HOURLY | HOURLY | 滚动周期（每小时一个文件） |
-| wireType | BINARY | BINARY | BINARY | 序列化格式 |
+| 参数 | account_input | matching_input | matching_output | account_settlement | 说明 |
+|------|---------------|----------------|-----------------|-------------------|------|
+| blockSize | 128MB | 64MB | 64MB | 64MB | 内存映射文件块大小 |
+| bufferSize | 256KB | 128KB | 128KB | 128KB | 写缓冲大小 |
+| rollCycle | HOURLY | HOURLY | HOURLY | HOURLY | 滚动周期（每小时一个文件） |
+| wireType | BINARY | BINARY | BINARY | BINARY | 序列化格式 |
 
 ### 12.4 Chronicle Map配置
 
-```java
-// Chronicle Map 快照文件配置
-public class ChronicleMapConfig {
+```
+Chronicle Map 快照文件配置:
 
-    // 账户快照CM
-    public ChronicleMap<String, AccountSnapshot> createAccountSnapshotCM(long cqIndex) {
-        return ChronicleMap
-            .of(String.class, AccountSnapshot.class)
-            .name("account_snapshot")
-            .entries(5000)                          // 预估5000个账户
-            .averageKeySize(32)                     // 平均key长度32字节
-            .averageValueSize(512)                  // 平均value大小512字节
-            .createPersistedTo(String.format(
-                "data/snapshots/account_snapshot_%d.dat", cqIndex));
-    }
+// AccountWorker快照CM
+accountSnapshotCM:
+    path: "data/snapshots/account_snapshot_{cqIndex}.dat"
+    entries: 10000                   # 预估10000个账户+持仓组合
+    averageValueSize: 2048           # 账户+持仓+索引信息
 
-    // 订单快照CM
-    public ChronicleMap<Long, OrderSnapshot> createOrderSnapshotCM(long cqIndex) {
-        return ChronicleMap
-            .of(Long.class, OrderSnapshot.class)
-            .name("order_snapshot")
-            .entries(100000)                        // 预估10万订单
-            .averageValueSize(256)
-            .createPersistedTo(String.format(
-                "data/snapshots/order_snapshot_%d.dat", cqIndex));
-    }
-
-    // 订单簿快照CM
-    public ChronicleMap<String, OrderBookSnapshot> createOrderbookSnapshotCM(long cqIndex) {
-        return ChronicleMap
-            .of(String.class, OrderBookSnapshot.class)
-            .name("orderbook_snapshot")
-            .entries(5000)                          // 预估5000只股票
-            .averageKeySize(8)                      // symbol长度
-            .averageValueSize(65536)                // 64KB每股票订单簿
-            .createPersistedTo(String.format(
-                "data/snapshots/orderbook_snapshot_%d.dat", cqIndex));
-    }
-
-    // 幂等存储：已处理订单ID
-    @Bean
-    public ChronicleMap<Long, Boolean> processedOrdersCM() {
-        return ChronicleMap
-            .of(Long.class, Boolean.class)
-            .name("processed_orders")
-            .entries(1000000)                       // 预估100万订单
-            .createOrRecoverPersistedTo(
-                "data/chronicle/processed_orders.dat");
-    }
-
-    // 幂等存储：已处理成交ID
-    @Bean
-    public ChronicleMap<String, Boolean> processedTradesCM() {
-        return ChronicleMap
-            .of(String.class, Boolean.class)
-            .name("processed_trades")
-            .entries(500000)                        // 预估50万成交
-            .averageKeySize(32)                     // tradeId格式: takerId_makerId
-            .createOrRecoverPersistedTo(
-                "data/chronicle/processed_trades.dat");
-    }
-
-    // 幂等存储：已处理结算ID
-    @Bean
-    public ChronicleMap<String, Boolean> processedSettlementsCM() {
-        return ChronicleMap
-            .of(String.class, Boolean.class)
-            .name("processed_settlements")
-            .entries(1000000)                       // 预估100万结算（买卖双方各一条）
-            .averageKeySize(48)                     // settlementId格式: tradeId_orderId
-            .createOrRecoverPersistedTo(
-                "data/chronicle/processed_settlements.dat");
-    }
-}
+// MatchingEngine快照CM
+matchingSnapshotCM:
+    path: "data/snapshots/matching_snapshot_{cqIndex}.dat"
+    entries: 5000                    # 预估5000只股票
+    averageValueSize: 65536          # 64KB每股票订单簿+索引信息
 ```
 
-**CM参数说明**：
+**快照文件结构**：
 
 | 文件 | entries | averageValueSize | 预估大小 | 说明 |
 |------|---------|------------------|----------|------|
-| account_snapshot | 5,000 | 512B | ~2.5MB | 账户快照 |
-| order_snapshot | 100,000 | 256B | ~25MB | 订单快照 |
-| orderbook_snapshot | 5,000 | 64KB | ~320MB | 订单簿快照 |
-| processed_orders | 1,000,000 | 1B | ~8MB | 已处理订单ID |
-| processed_trades | 500,000 | 1B | ~15MB | 已处理成交ID |
-| processed_settlements | 1,000,000 | 1B | ~48MB | 已处理结算ID |
+| account_snapshot_{index}.dat | 10,000 | 2KB | ~20MB | 账户+持仓+索引 |
+| matching_snapshot_{index}.dat | 5,000 | 64KB | ~320MB | OrderBook+索引 |
+
+**幂等集合内存配置**：
+
+| 幂等集合 | 内存限制 | 来源 |
+|---------|---------|------|
+| processed_order_ids | 最新10,000个 | matching_input CQ重放生成 |
+| processed_trade_ids | 最新10,000个 | account_settlement CQ重放生成 |
+| processed_settlement_ids | 最新10,000个 | 内存维护 |
+
+**说明**：幂等集合不再使用Chronicle Map持久化，恢复时从CQ重放生成。
 
 ### 12.5 目录结构
 
 ```
 data/
 ├── chronicle/
-│   ├── incoming_event/           # CQ目录（按小时滚动）
+│   ├── account_input/              # CQ目录（按小时滚动）
 │   │   ├── 20260523-08.cq4
 │   │   ├── 20260523-09.cq4
 │   │   └── metadata.cq4
-│   ├── match_orders/
+│   ├── account_output/
 │   │   └── ...
-│   ├── trade/
+│   ├── matching_input/
 │   │   └── ...
-│   ├── processed_orders.dat       # 幂等存储
-│   ├── processed_trades.dat
-│   └── processed_settlements.dat
+│   ├── matching_output/
+│   │   └── ...
+│   └── account_settlement/
+│       └── ...
 ├── snapshots/
-│   ├── account_snapshot_123456.dat
-│   ├── order_snapshot_123456.dat
-│   ├── orderbook_snapshot_123456.dat
-│   └── clearing_index.dat
+│   ├── account_snapshot_123456.dat    # AccountWorker快照
+│   ├── matching_snapshot_123456.dat   # MatchingEngine快照
+│   └── *.checksum                     # 校验和文件
 └── h2/
     └── trading.mv.db
 ```
@@ -3193,7 +3228,7 @@ private ProcessResult processOrder(IncomingEvent event) {
 
    } else {
        // 当日CQ已存在（重启恢复）
-       // 从CM快照 + CQ增量恢复
+       // 从快照 + CQ增量恢复
        recoverFromSnapshotAndCQ(cqDir);
    }
 
@@ -3224,45 +3259,43 @@ private ProcessResult processOrder(IncomingEvent event) {
    phaseManager.setPhase(CONTINUOUS_TRADING);
 ```
 
-**T+1解锁逻辑**：
+**新交易日启动流程**：
 
-```java
-private void unlockT1Positions() {
-    for (Position pos : positions.values()) {
-        // A股T+1：昨日买入的今日可卖
-        if (pos.t1Locked > 0) {
-            pos.available += pos.t1Locked;
-            pos.t1Locked = 0;
-            log.info("T+1 unlocked: accountId={}, symbol={}, qty={}",
-                     pos.accountId, pos.symbol, pos.available);
-        }
-    }
-}
 ```
+startNewTradingDay(date):
+    cqDir = "data/chronicle/" + date + "/"
 
-**检查未解冻数据**：
+    if (!Files.exists(cqDir)):
+        // 新交易日
+        mkdir(cqDir)
 
-```java
-private void checkPendingFreezes() {
-    // 检查是否有未解冻的资金
-    for (Account acc : accounts.values()) {
-        if (acc.orderFrozen > 0) {
-            log.error("发现未解冻资金: accountId={}, orderFrozen={}", 
-                      acc.accountId, acc.orderFrozen);
-            // 告警，需要人工介入
-            alertManager.sendAlert("账户存在未解冻资金: " + acc.accountId);
-        }
-    }
-    
-    // 检查是否有未解冻的持仓
-    for (Position pos : positions.values()) {
-        if (pos.frozen > 0) {
-            log.error("发现未解冻持仓: accountId={}, symbol={}, frozen={}",
-                      pos.accountId, pos.symbol, pos.frozen);
-            alertManager.sendAlert("持仓存在未解冻数量: " + pos.accountId + "/" + pos.symbol);
-        }
-    }
-}
+        // 1. 加载上一交易日最终快照
+        prevDate = getPreviousTradingDay(date)
+        prevSnapshotDir = "data/snapshots/" + prevDate + "/"
+
+        if (Files.exists(prevSnapshotDir)):
+            loadPrevDaySnapshot(prevSnapshotDir)
+
+            // 2. T+1解锁
+            unlockT1Positions()
+
+        // 3. 清空订单簿和订单（上一日的订单已在EOD撤销）
+        orderBooks.clear()
+        orderStore.clear()
+
+        // 4. 创建当日CQ文件
+        createCQFiles(cqDir)
+
+        // 5. 幂等集合会在恢复时从CQ重放生成
+        //    processed_order_ids: 从matching_input CQ重放
+        //    processed_trade_ids: 从account_settlement CQ重放
+        //    processed_settlement_ids: 内存维护
+
+        log.info("New trading day {} initialized with T+1 unlock", date)
+    else:
+        // 当日重启
+        recoverFromSnapshotAndCQ(cqDir)
+        log.info("Trading day {} recovered from snapshot+CQ", date)
 ```
 
 ### 16.2 EOD流程
@@ -3324,33 +3357,33 @@ private void checkPendingFreezes() {
 
 **跨日清理：通过CANCEL_ORDER事件撤销所有未成交订单**：
 
-```java
+```
 /**
  * EOD时撤销所有未成交订单
- * 通过写入CANCEL_ORDER事件到incoming_event CQ，复用现有撤单清结算逻辑
+ * 通过写入CANCEL_ORDER事件到account_input CQ，复用现有撤单清结算逻辑
  * 确保所有撤单操作都经过CQ持久化，保证RPO=0
  */
 private void cancelAllPendingOrders() {
     int count = 0;
-    
+
     for (Order order : orders.values()) {
         // 撤销所有未完成订单（包括PENDING/NEW/PARTIAL_FILLED）
         if (order.status == PENDING || order.status == NEW || order.status == PARTIAL_FILLED) {
-            // 写入CANCEL_ORDER事件到incoming_event CQ
-            IncomingEvent cancelEvent = new IncomingEvent();
+            // 写入CANCEL_ORDER事件到account_input CQ
+            AccountInputEvent cancelEvent = new AccountInputEvent();
             cancelEvent.eventType = CANCEL_ORDER;
             cancelEvent.orderId = order.orderId;
             cancelEvent.accountId = order.accountId;
             cancelEvent.symbol = order.symbol;
             cancelEvent.reason = "EOD_AUTO_CANCEL";
-            
-            incomingEventCQ.write(cancelEvent);
+
+            accountInputCQ.write(cancelEvent);
             count++;
         }
     }
-    
-    log.info("EOD wrote {} CANCEL_ORDER events to incoming_event CQ", count);
-    
+
+    log.info("EOD wrote {} CANCEL_ORDER events to account_input CQ", count);
+
     // 等待撤单处理完成（AccountWorker和ClearingWorker会处理这些事件）
     awaitQueueEmpty(10000);
 }
@@ -3358,48 +3391,22 @@ private void cancelAllPendingOrders() {
 
 **归档幂等存储**：
 
-```java
+```
 /**
- * EOD归档幂等存储CM文件
- * 将当日processed_orders/trades/settlements CM重命名为带日期的备份文件
- * 并创建新的空CM供次日交易使用
+ * EOD归档幂等存储
+ * 新交易日开始时，幂等集合会通过CQ重放重新生成
+ * 内存中仅保留最新10,000个ID，旧ID自动丢弃
  */
-private void archiveIdempotencyMaps() {
+private void archiveIdempotencyData() {
     String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-    
-    // 归档processed_orders CM
-    Path ordersOld = Paths.get("data/chronicle/processed_orders.dat");
-    Path ordersArchive = Paths.get("data/archive/processed_orders_" + date + ".dat");
-    Files.move(ordersOld, ordersArchive, StandardCopyOption.REPLACE_EXISTING);
-    processedOrdersCM.close();
-    processedOrdersCM = ChronicleMap.of(Long.class, Boolean.class)
-        .name("processed_orders")
-        .entries(1000000)
-        .createPersistedTo(ordersOld.toString());
-    
-    // 归档processed_trades CM
-    Path tradesOld = Paths.get("data/chronicle/processed_trades.dat");
-    Path tradesArchive = Paths.get("data/archive/processed_trades_" + date + ".dat");
-    Files.move(tradesOld, tradesArchive, StandardCopyOption.REPLACE_EXISTING);
-    processedTradesCM.close();
-    processedTradesCM = ChronicleMap.of(String.class, Boolean.class)
-        .name("processed_trades")
-        .entries(500000)
-        .averageKeySize(32)
-        .createPersistedTo(tradesOld.toString());
-    
-    // 归档processed_settlements CM
-    Path settlementsOld = Paths.get("data/chronicle/processed_settlements.dat");
-    Path settlementsArchive = Paths.get("data/archive/processed_settlements_" + date + ".dat");
-    Files.move(settlementsOld, settlementsArchive, StandardCopyOption.REPLACE_EXISTING);
-    processedSettlementsCM.close();
-    processedSettlementsCM = ChronicleMap.of(String.class, Boolean.class)
-        .name("processed_settlements")
-        .entries(1000000)
-        .averageKeySize(48)
-        .createPersistedTo(settlementsOld.toString());
-    
-    log.info("Idempotency maps archived for date {}", date);
+
+    // 幂等集合内存中自动维护最新10,000个ID
+    // 新交易日开始时，通过CQ重放重新生成：
+    // - processed_order_ids: 从matching_input CQ重放生成
+    // - processed_trade_ids: 从account_settlement CQ重放生成
+    // - processed_settlement_ids: 内存维护，重启后重新生成
+
+    log.info("Idempotency data will be regenerated from CQ replay on next startup");
 }
 ```
 
@@ -3463,32 +3470,44 @@ public void startNewTradingDay(String date) {
 
 ### 17.1 快照机制概述
 
-**核心设计**：通过 SNAPSHOT 事件触发快照，无需额外暂停机制。
+**核心设计**：通过 SNAPSHOT 事件触发快照，各Worker独立维护快照文件。
 
-| Worker | 快照触发方式 | 快照文件命名 |
-|--------|-------------|-------------|
-| AccountWorker | SNAPSHOT 事件写入 incoming_event CQ | account_snapshot_{incoming_cq_index}.dat |
-| MatchingEngine | SNAPSHOT 事件写入 match_orders CQ | orderbook_snapshot_{match_cq_index}.dat |
-| ClearingWorker | 每批次后写入 trades CQ index | clearing_index.dat |
+| Worker | 输入CQ | 输出CQ | 快照文件 | 快照内容 |
+|--------|--------|--------|---------|---------|
+| AccountWorker | `account_input.cq4` | `account_output.cq4`, `matching_input.cq4` | `account_snapshot_{index}.dat` | accounts, positions, account_input index, account_settlement index, matching_input lastIndex |
+| MatchingEngine | `matching_input.cq4` | `matching_output.cq4` | `matching_snapshot_{index}.dat` | matching_input index, matching_output lastIndex, active orders per symbol |
+| ClearingWorker | `matching_output.cq4` | `account_settlement.cq4` | 无 | - |
 
 **关键设计原理**：
 
-1. **独立索引存储**：三个Worker的快照索引独立存储，这是正确的设计：
-   - AccountWorker处理incoming_event CQ，快照索引记录其处理位置
-   - MatchingEngine处理match_orders CQ，快照索引记录其处理位置
-   - ClearingWorker处理trades CQ，索引记录其处理位置
-   - 各索引反映各自CQ的真实处理进度，不存在"不一致"问题
+1. **AccountWorker快照内容**：
+   - accounts, positions（账户和持仓状态）
+   - `account_input.cq4`处理位置（用于恢复时从此位置重放）
+   - `account_settlement.cq4`处理位置（用于恢复时从此位置重放SETTLEMENT事件）
+   - `matching_input.cq4` lastIndex（用于恢复时生成processed_order_ids）
 
-2. **恢复时的正确行为**：
-   - AccountWorker从`account_snapshot_{index}`加载，从`incoming_cq_index+1`重放
-   - MatchingEngine从`orderbook_snapshot_{index}`加载，从`match_cq_index+1`重放
-   - ClearingWorker从`clearing_index.dat`获取位置，从`trades_cq_index+1`重放
-   - 每个Worker独立恢复，下游Worker通过幂等机制处理可能的重复事件
+2. **MatchingEngine快照内容**：
+   - `matching_input.cq4`处理位置
+   - `matching_output.cq4` lastIndex（用于恢复时检测已存在的trade_id）
+   - active orders per symbol（当前OrderBook中的活跃订单）
 
-3. **幂等机制保证一致性**：
-   - MatchingEngine：`processed_orders CM`防止重复处理订单
-   - ClearingWorker：`processed_trades CM`防止重复处理成交
-   - AccountWorker：`processed_settlements CM`防止重复结算
+3. **ClearingWorker不生成快照**：
+   - 恢复时从`account_settlement.cq4`读取最新10,000个trade_id用于幂等检查
+   - 无需持久化状态，直接重放`matching_output.cq4`
+
+**幂等机制设计**：
+
+| 幂等集合 | 来源 | 内存限制 | 用途 |
+|---------|------|---------|------|
+| `processed_order_ids` | `matching_input.cq4` lastIndex→latest | 最新10,000个 | MatchingEngine跳过已处理订单 |
+| `processed_trade_ids` | `account_settlement.cq4` snapshot index→latest | 最新10,000个 | ClearingWorker跳过已处理成交 |
+| `processed_settlement_ids` | 内存维护 | 最新10,000个 | AccountWorker跳过已处理结算 |
+
+**说明**：
+- `processed_order_ids`：恢复时从快照记录的`matching_input.cq4` lastIndex位置读取到最新位置的所有订单order_id
+- `processed_trade_ids`：恢复时从快照记录的`account_settlement.cq4` snapshot index位置读取到最新位置的所有成交trade_id
+- 内存中仅保留最新10,000个ID，旧ID被丢弃（节省内存）
+- 幂等检查通过确定性trade_id实现：`trade_id = takerOrderId_makerOrderId`
 
 **快照处理流程**：
 - Worker 本身是单线程，处理到 SNAPSHOT 事件时自然暂停后续事件处理
@@ -3497,655 +3516,248 @@ public void startNewTradingDay(String date) {
 
 ### 17.2 AccountWorker 快照流程
 
-```java
-public class AccountWorker implements Runnable {
-    
-    public void run() {
-        while (running) {
-            // 批量读取，最多50个或超时1ms
-            List<IncomingEvent> events = incomingEventCQ.readBatch(50, 1);
-            
-            // 检查是否包含 SNAPSHOT 事件
-            IncomingEvent snapshotEvent = findSnapshotEvent(events);
-            
-            if (snapshotEvent != null) {
-                // 1. 分离普通事件和快照事件
-                List<IncomingEvent> normalEvents = events.stream()
-                    .filter(e -> e.eventType != SNAPSHOT)
-                    .collect(Collectors.toList());
-                
-                // 2. 处理普通事件（快照点之前的事件）
-                for (IncomingEvent e : normalEvents) {
-                    processNormalEvent(e);
-                }
-                
-                // 3. 执行快照（此时后续事件仍在CQ中，下一批次处理）
-                long cqIndex = snapshotEvent.cqIndex;
-                executeAccountSnapshot(cqIndex);
-                
-                // 4. 继续下一批次（处理快照点之后的事件）
-                continue;
-            }
-            
-            // 无快照事件，正常批量处理
-            for (IncomingEvent e : events) {
-                processNormalEvent(e);
-            }
-        }
-    }
-    
-    private void executeAccountSnapshot(long cqIndex) {
-        // 1. 写入账户快照
-        ChronicleMap<Long, Account> accountCM = ChronicleMap.of(Long.class, Account.class)
-            .name("accounts")
-            .entries(10000)
-            .createPersistedTo("data/snapshots/account_snapshot_" + cqIndex + ".dat");
-        for (Map.Entry<Long, Account> e : accounts.entrySet()) {
-            accountCM.put(e.getKey(), e.getValue());
-        }
-        accountCM.close();
-        
-        // 2. 写入持仓快照
-        ChronicleMap<Long, Position> positionCM = ChronicleMap.of(Long.class, Position.class)
-            .name("positions")
-            .entries(100000)
-            .createPersistedTo("data/snapshots/position_snapshot_" + cqIndex + ".dat");
-        for (Map.Entry<Long, Position> e : positions.entrySet()) {
-            positionCM.put(e.getKey(), e.getValue());
-        }
-        positionCM.close();
-        
-        // 3. 写入订单快照
-        ChronicleMap<Long, Order> orderCM = ChronicleMap.of(Long.class, Order.class)
-            .name("orders")
-            .entries(100000)
-            .createPersistedTo("data/snapshots/order_snapshot_" + cqIndex + ".dat");
-        for (Map.Entry<Long, Order> e : orders.entrySet()) {
-            orderCM.put(e.getKey(), e.getValue());
-        }
-        orderCM.close();
+**快照文件内容**：
+- `accounts`: 所有账户状态
+- `positions`: 所有持仓状态
+- `account_input_index`: `account_input.cq4`处理位置
+- `account_settlement_index`: `account_settlement.cq4`处理位置
+- `matching_input_last_index`: `matching_input.cq4`写入的最后位置（用于恢复时生成processed_order_ids）
 
-        // 4. 写入已处理结算ID快照（processed_settlements）
-        ChronicleMap<String, Boolean> settlementCM = ChronicleMap.of(String.class, Boolean.class)
-            .name("processed_settlements")
-            .entries(1000000)
-            .averageKeySize(48)
-            .createPersistedTo("data/snapshots/processed_settlements_" + cqIndex + ".dat");
-        for (Map.Entry<String, Boolean> e : processedSettlementsCM.entrySet()) {
-            settlementCM.put(e.getKey(), e.getValue());
-        }
-        settlementCM.close();
+**快照流程**：
 
-        // 5. 写入校验和文件（使用共享工具类）
-        ChecksumUtils.writeChecksum("account_snapshot_" + cqIndex + ".dat");
-        ChecksumUtils.writeChecksum("position_snapshot_" + cqIndex + ".dat");
-        ChecksumUtils.writeChecksum("order_snapshot_" + cqIndex + ".dat");
-        ChecksumUtils.writeChecksum("processed_settlements_" + cqIndex + ".dat");
+AccountWorker处理account_input CQ时，遇到SNAPSHOT事件执行快照：
 
-        log.info("Account snapshot completed at cqIndex={}", cqIndex);
-    }
+1. 处理当前批次普通事件（SNAPSHOT之前的所有事件）
+2. 执行快照：
+   - 写入accounts和positions状态
+   - 记录account_input CQ当前处理位置
+   - 记录account_settlement CQ当前处理位置（SETTLEMENT事件来源）
+   - 记录matching_input CQ写入的最后位置（用于恢复时生成processed_order_ids）
+3. 后续事件在下一批次处理
 
-    /**
-     * 从事件列表中查找SNAPSHOT事件
-     */
-    private IncomingEvent findSnapshotEvent(List<IncomingEvent> events) {
-        for (IncomingEvent e : events) {
-            if (e.eventType == SNAPSHOT) {
-                return e;
-            }
-        }
-        return null;
-    }
+**快照文件命名**: `account_snapshot_{account_input_cq_index}.dat`
 
-    /**
-     * 处理单个IncomingEvent事件
-     */
-    private void processNormalEvent(IncomingEvent event) {
-        switch (event.eventType) {
-            case NEW_ORDER:
-                processNewOrder(event);
-                break;
-            case CANCEL_ORDER:
-                processCancelOrder(event);
-                break;
-            case UNFREEZE:
-                processUnfreeze(event);
-                break;
-            case SETTLEMENT:
-                processSettlement(event);
-                break;
-            case PHASE_CHANGE:
-                processPhaseChange(event);
-                break;
-            default:
-                log.warn("Unknown event type: {}", event.eventType);
-        }
-    }
-}
-```
+**恢复流程**：
+
+1. 加载account_snapshot_{index}.dat到内存：
+   - accounts → ConcurrentHashMap<Long, Account>
+   - positions → ConcurrentHashMap<String, Position>
+   - 获取account_input_index, account_settlement_index, matching_input_last_index
+
+2. 生成processed_order_ids：
+   - 从matching_input CQ的matching_input_last_index位置读取到最新位置
+   - 提取所有order_id，加入processed_order_ids集合
+   - 内存中仅保留最新10,000个order_id（旧的丢弃）
+
+3. 生成processed_trade_ids：
+   - 从account_settlement CQ的account_settlement_index位置读取到最新位置
+   - 提取所有trade_id，加入processed_trade_ids集合
+   - 内存中仅保留最新10,000个trade_id（旧的丢弃）
+
+4. 重放account_input CQ从account_input_index+1开始：
+   - 处理NEW_ORDER/CANCEL_ORDER/DEPOSIT等事件
+
+5. 重放account_settlement CQ从account_settlement_index+1开始：
+   - 处理SETTLEMENT/UNFREEZE事件
+   - 使用processed_settlement_ids幂等检查（内存维护最新10,000个）
 
 ### 17.3 MatchingEngine 快照流程
 
-```java
-public class MatchingEngine implements Runnable {
-    
-    public void run() {
-        while (running) {
-            List<MatchOrderEvent> events = matchOrdersCQ.readBatch(50, 1);
-            
-            MatchOrderEvent snapshotEvent = findSnapshotEvent(events);
-            
-            if (snapshotEvent != null) {
-                // 1. 处理快照点之前的订单
-                List<MatchOrderEvent> normalEvents = events.stream()
-                    .filter(e -> e.eventType != SNAPSHOT)
-                    .collect(Collectors.toList());
-                
-                for (MatchOrderEvent e : normalEvents) {
-                    processOrder(e);
-                    tryMatch(e.symbol);
-                }
-                
-                // 2. 执行订单簿快照
-                long cqIndex = snapshotEvent.cqIndex;
-                executeOrderbookSnapshot(cqIndex);
-                
-                continue;
-            }
-            
-            // 无快照事件，正常处理
-            for (MatchOrderEvent e : events) {
-                processOrder(e);
-                tryMatch(e.symbol);
-            }
-        }
-    }
-    
-    private void executeOrderbookSnapshot(long cqIndex) {
-        // 序列化所有订单簿
-        ChronicleMap<String, byte[]> orderbookCM = ChronicleMap.of(String.class, byte[].class)
-            .name("orderbook")
-            .entries(5000)
-            .averageValueSize(10240)
-            .createPersistedTo("data/snapshots/orderbook_snapshot_" + cqIndex + ".dat");
-        
-        for (Map.Entry<String, OrderBook> e : orderBooks.entrySet()) {
-            orderbookCM.put(e.getKey(), serializeOrderBook(e.getValue()));
-        }
-        orderbookCM.close();
-        
-        // 写入校验和文件（使用共享工具类）
-        ChecksumUtils.writeChecksum("orderbook_snapshot_" + cqIndex + ".dat");
-        
-        log.info("Orderbook snapshot completed at cqIndex={}", cqIndex);
-    }
-    
-    /**
-     * 从事件列表中查找SNAPSHOT事件
-     */
-    private MatchOrderEvent findSnapshotEvent(List<MatchOrderEvent> events) {
-        for (MatchOrderEvent e : events) {
-            if (e.eventType == SNAPSHOT) {
-                return e;
-            }
-        }
-        return null;
-    }
-}
-```
+**快照文件内容**：
+- `matching_input_index`: `matching_input.cq4`处理位置
+- `matching_output_last_index`: `matching_output.cq4`写入的最后位置（用于恢复时检测已存在的trade_id）
+- `active_orders`: 各symbol的活跃订单（当前在OrderBook中的订单）
 
-### 17.4 ClearingWorker 索引记录
+**快照文件命名**: `matching_snapshot_{matching_input_cq_index}.dat`
 
-ClearingWorker 不执行完整快照，仅记录 trades CQ 处理位置：
+**恢复流程**：
 
-```java
-public class ClearingWorker implements Runnable {
-    
-    public void run() {
-        while (running) {
-            List<TradeEvent> events = tradeQueue.readBatch(50, 1);
-            
-            if (events.isEmpty()) continue;
-            
-            // 批量处理成交
-            for (TradeEvent e : events) {
-                processTrade(e);
-            }
-            
-            // 每批次后记录当前 trades CQ index
-            long lastIndex = events.get(events.size() - 1).cqIndex;
-            writeClearingIndex(lastIndex);
-        }
-    }
-    
-    private void writeClearingIndex(long index) {
-        // 写入 clearing_index.dat（原子：先写tmp再rename）
-        Path tempFile = Paths.get("data/snapshots/clearing_index.tmp");
-        Path targetFile = Paths.get("data/snapshots/clearing_index.dat");
-        
-        ChronicleMap<String, Long> indexCM = ChronicleMap.of(String.class, Long.class)
-            .name("clearing_index")
-            .entries(1)
-            .createPersistedTo(tempFile.toString());
-        indexCM.put("lastProcessedIndex", index);
-        indexCM.close();
-        
-        // 原子rename
-        Files.move(tempFile, targetFile, 
-                   StandardCopyOption.ATOMIC_MOVE, 
-                   StandardCopyOption.REPLACE_EXISTING);
-    }
-}
-```
+1. 加载matching_snapshot_{index}.dat到内存：
+   - active_orders → 各symbol的OrderBook
+   - 获取matching_input_index, matching_output_last_index
+
+2. 设置replay_mode=true：
+   - 恢复时MatchingEngine处于replay模式
+   - replay模式下，撮合前先检查trade_id是否已存在于matching_output CQ
+
+3. 读取matching_output CQ中已有的trade_id：
+   - 从matching_output CQ开始位置读取到matching_output_last_index
+   - 提取所有trade_id，加入existing_trade_ids集合
+
+4. 重放matching_input CQ从matching_input_index+1开始：
+   - 处理NEW_ORDER事件：
+     - 将订单加入OrderBook
+     - 执行撮合，生成TRADE事件
+     - 如果生成的trade_id已存在于existing_trade_ids，跳过该TRADE（不写入matching_output）
+     - 直到遇到第一个新trade_id（不在existing_trade_ids中），设置replay_mode=false
+     - replay_mode=false后，正常撮合并写入所有TRADE事件
+   - 处理CANCEL_ORDER事件：
+     - 从OrderBook移除订单
+     - 生成CANCEL_SUCCESS/CANCEL_REJECT事件
+
+**Replay Mode机制说明**：
+
+| replay_mode值 | 行为 |
+|--------------|------|
+| true | 撮合时检查trade_id是否已存在，已存在则跳过TRADE事件写入 |
+| false | 正常撮合，无需检查trade_id |
+
+**Replay Mode退出条件**：
+- 遇到第一个新trade_id（不在existing_trade_ids集合中）时，设置replay_mode=false
+- 之后所有TRADE事件正常写入matching_output CQ
+
+**Replay Mode必要性**：
+- 恢复时可能重复撮合已成交的订单（因为matching_input CQ重放）
+- 通过trade_id确定性（takerOrderId_makerOrderId），可识别重复成交
+- replay_mode确保不会写入重复TRADE事件，避免下游ClearingWorker重复处理
+
+### 17.4 ClearingWorker 恢复机制
+
+**ClearingWorker不生成快照**，恢复时直接重放matching_output CQ。
+
+**恢复流程**：
+
+1. 生成processed_trade_ids：
+   - 从account_settlement CQ读取最新10,000个事件
+   - 提取所有trade_id，加入processed_trade_ids集合
+   - 内存中仅保留最新10,000个trade_id（旧的丢弃）
+
+2. 重放matching_output CQ从开始位置：
+   - 处理ORDER_UPDATE事件：更新订单状态
+   - 处理TRADE事件：
+     - 使用processed_trade_ids幂等检查（跳过已处理的成交）
+     - 生成SETTLEMENT事件写入account_settlement CQ
+     - 将trade_id加入processed_trade_ids（内存维护最新10,000个）
+   - 处理CANCEL_SUCCESS事件：生成UNFREEZE事件写入account_settlement CQ
+   - 处理CANCEL_REJECT事件：推送WebSocket通知
+
+**幂等机制**：
+- ClearingWorker使用内存processed_trade_ids集合
+- processed_trade_ids来源于account_settlement CQ（最新10,000个）
+- trade_id确定性：`trade_id = takerOrderId_makerOrderId`
+- 重放时通过trade_id检查跳过已处理的成交
 
 ### 17.5 快照事件生成
 
-SnapshotWorker 定时向 incoming_event 和 match_orders CQ 写入 SNAPSHOT 事件：
+SnapshotWorker 定时向 account_input CQ 和 matching_input CQ 写入 SNAPSHOT 事件：
 
-```java
-public class SnapshotWorker implements Runnable {
-    
-    private final long snapshotIntervalMs = 60000;  // 1分钟
-    private TradingPhase currentPhase = CLOSED;     // 当前交易时段
-    
-    public void run() {
-        while (running) {
-            Thread.sleep(snapshotIntervalMs);
-            
-            // 0. 检测交易时段变化，写入PHASE_CHANGE事件
-            TradingPhase newPhase = detectTradingPhase();
-            if (newPhase != currentPhase) {
-                writePhaseChangeEvent(newPhase);
-                currentPhase = newPhase;
-            }
-            
-            // 1. 向 incoming_event CQ 写入 SNAPSHOT 事件
-            long incomingIndex = incomingEventCQ.writeSnapshotEvent();
-            log.info("SNAPSHOT event written to incoming_event CQ at index {}", incomingIndex);
-            
-            // 2. 等待 AccountWorker 处理完快照（通过文件存在判断 + 校验和验证）
-            awaitSnapshotComplete("account_snapshot_" + incomingIndex + ".dat");
-            
-            // 3. 向 match_orders CQ 写入 SNAPSHOT 事件
-            long matchIndex = matchOrdersCQ.writeSnapshotEvent();
-            log.info("SNAPSHOT event written to match_orders CQ at index {}", matchIndex);
-            
-            // 4. 等待 MatchingEngine 处理完快照
-            awaitSnapshotComplete("orderbook_snapshot_" + matchIndex + ".dat");
-            
-            // 5. 清理旧快照（保留最近3个）
-            cleanupOldSnapshots();
-        }
-    }
-    
-    /**
-     * 检测当前交易时段（基于系统时间）
-     * A股交易时段：
-     * - 09:15-09:25 开盘集合竞价
-     * - 09:30-11:30 上午连续竞价
-     * - 13:00-14:57 下午连续竞价
-     * - 14:57-15:00 收盘集合竞价
-     * - 其他时间 CLOSED
-     */
-    private TradingPhase detectTradingPhase() {
-        LocalTime now = LocalTime.now();
-        
-        if (now.isAfter(LocalTime.of(9, 15)) && now.isBefore(LocalTime.of(9, 25))) {
-            return CALL_AUCTION_OPEN;
-        } else if (now.isAfter(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(11, 30))) {
-            return CONTINUOUS_TRADING;
-        } else if (now.isAfter(LocalTime.of(13, 0)) && now.isBefore(LocalTime.of(14, 57))) {
-            return CONTINUOUS_TRADING;
-        } else if (now.isAfter(LocalTime.of(14, 57)) && now.isBefore(LocalTime.of(15, 0))) {
-            return CALL_AUCTION_CLOSE;
-        } else {
-            return CLOSED;
-        }
-    }
-    
-    /**
-     * 写入PHASE_CHANGE事件到incoming_event CQ
-     * 触发AccountWorker和MatchingEngine执行时段切换逻辑
-     */
-    private void writePhaseChangeEvent(TradingPhase newPhase) {
-        IncomingEvent phaseEvent = new IncomingEvent();
-        phaseEvent.eventType = PHASE_CHANGE;
-        phaseEvent.phase = newPhase;
-        phaseEvent.timestamp = System.currentTimeMillis();
-        
-        incomingEventCQ.write(phaseEvent);
-        log.info("PHASE_CHANGE event written: {}", newPhase);
-        
-        // 集合竞价结束时触发撮合
-        if (newPhase == CONTINUOUS_TRADING && currentPhase == CALL_AUCTION_OPEN) {
-            // 集合竞价结束，触发开盘撮合
-            triggerOpenCallAuction();
-        } else if (newPhase == CLOSED && currentPhase == CALL_AUCTION_CLOSE) {
-            // 收盘集合竞价结束，触发收盘撮合
-            triggerCloseCallAuction();
-        }
-    }
-    
-    private void triggerOpenCallAuction() {
-        // 通知MatchingEngine执行开盘集合竞价撮合
-        for (String symbol : activeSymbols) {
-            callAuctionProcessor.processCallAuction(symbol);
-        }
-        log.info("Open call auction triggered for {} symbols", activeSymbols.size());
-    }
-    
-    private void triggerCloseCallAuction() {
-        // 通知MatchingEngine执行收盘集合竞价撮合
-        for (String symbol : activeSymbols) {
-            callAuctionProcessor.processCallAuction(symbol);
-        }
-        log.info("Close call auction triggered for {} symbols", activeSymbols.size());
-    }
-    
-    /**
-     * 等待快照完成（文件存在 + 校验和验证）
-     */
-    private void awaitSnapshotComplete(String filename) {
-        Path file = Paths.get("data/snapshots/" + filename);
-        Path checksumFile = Paths.get("data/snapshots/" + filename + ".checksum");
-        long deadline = System.currentTimeMillis() + 10000;  // 最多等10秒
-        
-        while (System.currentTimeMillis() < deadline) {
-            if (Files.exists(file) && Files.exists(checksumFile)) {
-                // 验证校验和
-                if (verifyChecksum(file, checksumFile)) {
-                    return;
-                } else {
-                    log.error("Snapshot checksum mismatch: {}", filename);
-                    // 删除损坏的快照文件
-                    Files.deleteIfExists(file);
-                    Files.deleteIfExists(checksumFile);
-                    // 继续等待，可能正在写入新的快照
-                }
-            }
-            Thread.sleep(100);
-        }
-        log.warn("Snapshot timeout: {}", filename);
-    }
+**快照间隔**: 60秒
 
-    /**
-     * 校验快照文件完整性
-     */
-    private boolean verifyChecksum(Path dataFile, Path checksumFile) {
-        String expectedChecksum = Files.readString(checksumFile);
-        String actualChecksum = ChecksumUtils.calculateMD5(dataFile);
-        return expectedChecksum.equals(actualChecksum);
-    }
-}
+**快照流程**：
 
-/**
- * 校验和工具类（共享工具）
- */
-public class ChecksumUtils {
-    
-    /**
-     * 计算文件的MD5校验和
-     */
-    public static String calculateMD5(Path file) {
-        MessageDigest md = MessageDigest.getInstance("MD5");
-        byte[] fileBytes = Files.readAllBytes(file);
-        byte[] hash = md.digest(fileBytes);
-        
-        StringBuilder sb = new StringBuilder();
-        for (byte b : hash) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
-    
-    /**
-     * 写入快照文件的校验和
-     */
-    public static void writeChecksum(String filename) {
-        Path dataFile = Paths.get("data/snapshots/" + filename);
-        Path checksumFile = Paths.get("data/snapshots/" + filename + ".checksum");
-        
-        String checksum = calculateMD5(dataFile);
-        Files.writeString(checksumFile, checksum);
-    }
-    
-    /**
-     * 验证文件校验和
-     */
-    public static boolean verifyChecksum(Path dataFile, Path checksumFile) {
-        if (!Files.exists(checksumFile)) {
-            return false;
-        }
-        String expectedChecksum = Files.readString(checksumFile);
-        String actualChecksum = calculateMD5(dataFile);
-        return expectedChecksum.equals(actualChecksum);
-    }
-}
+1. 向account_input CQ写入SNAPSHOT事件
+2. 等待AccountWorker处理完快照（通过快照文件存在+校验和验证）
+3. 向matching_input CQ写入SNAPSHOT事件
+4. 等待MatchingEngine处理完快照（通过快照文件存在+校验和验证）
+5. 清理旧快照文件（保留最近3个）
 
-/**
- * 恢复时查找有效快照
- */
-public class SnapshotRecovery {
+**校验和验证**：
+- 每个快照文件写入后，计算MD5校验和并写入同名的.checksum文件
+- 恢复时验证校验和，若校验失败则回退到上一个有效快照
 
-    /**
-     * 查找最新有效快照索引，若损坏则回退到旧快照
-     */
-    public long findLatestValidSnapshotIndex(String pattern) {
-        List<Path> files = findFiles(pattern);
-        Collections.sort(files, Collections.reverseOrder());
-
-        for (Path file : files) {
-            Path checksumFile = Paths.get(file.toString() + ".checksum");
-            if (Files.exists(checksumFile) && verifyChecksum(file, checksumFile)) {
-                long index = extractIndex(file);
-                log.info("Found valid snapshot: {} at index {}", file.getFileName(), index);
-                return index;
-            }
-            log.warn("Checksum failed, trying older snapshot: {}", file.getFileName());
-        }
-
-        log.warn("No valid snapshot found for pattern: {}", pattern);
-        return -1;  // 无有效快照，需从CQ起点重放
-    }
-
-    private long extractIndex(Path file) {
-        // 从文件名提取index，如 account_snapshot_1001.dat → 1001
-        String filename = file.getFileName().toString();
-        int lastUnderscore = filename.lastIndexOf('_');
-        int dotIndex = filename.indexOf('.', lastUnderscore);
-        return Long.parseLong(filename.substring(lastUnderscore + 1, dotIndex));
-    }
-}
-```
+**交易时段检测**：
+- SnapshotWorker同时检测交易时段变化
+- 写入PHASE_CHANGE事件到account_input CQ
+- 触发集合竞价撮合（开盘/收盘集合竞价）
 
 ### 17.6 快照文件结构
 
 ```
 data/snapshots/
-├── account_snapshot_1001.dat         # AccountWorker 在 incoming_cq_index=1001 时的快照
-├── position_snapshot_1001.dat        # 持仓快照（与账户快照同 index）
-├── order_snapshot_1001.dat           # 订单快照（与账户快照同 index）
-├── processed_settlements_1001.dat    # AccountWorker 已处理结算ID（与账户快照同 index）
-├── orderbook_snapshot_2005.dat       # MatchingEngine 在 match_cq_index=2005 时的快照
-├── clearing_index.dat                # ClearingWorker 最后处理的 trades_cq_index
+├── account_snapshot_1001.dat         # AccountWorker在account_input_cq_index=1001时的快照
+│   ├── accounts[]                    # 账户状态
+│   ├── positions[]                   # 持仓状态
+│   ├── account_input_index: long     # account_input.cq4处理位置
+│   ├── account_settlement_index: long # account_settlement.cq4处理位置
+│   └── matching_input_last_index: long # matching_input.cq4写入的最后位置
+├── matching_snapshot_2005.dat        # MatchingEngine在matching_input_cq_index=2005时的快照
+│   ├── matching_input_index: long    # matching_input.cq4处理位置
+│   ├── matching_output_last_index: long # matching_output.cq4写入的最后位置
+│   └── active_orders: Map<symbol, List<Order>> # 各symbol活跃订单
 ├── *.checksum                        # 各快照文件的MD5校验文件
 ```
 
 **快照文件关联关系**：
 
-| Worker | 快照文件 | CQ索引来源 | 说明 |
-|--------|---------|-----------|------|
-| AccountWorker | account/position/order/processed_settlements_snapshot_{index}.dat | incoming_event CQ | 同index的四文件，用于恢复账户状态和幂等检查 |
-| MatchingEngine | orderbook_snapshot_{index}.dat | match_orders CQ | 订单簿快照，已处理订单ID从order_snapshot提取 |
-| ClearingWorker | clearing_index.dat | trades CQ | 仅记录CQ处理位置，processed_trades CM为内存持久化 |
+| Worker | 快照文件 | 索引来源 | 用途 |
+|--------|---------|---------|------|
+| AccountWorker | `account_snapshot_{index}.dat` | account_input CQ | 恢复账户/持仓状态，生成processed_order_ids和processed_trade_ids |
+| MatchingEngine | `matching_snapshot_{index}.dat` | matching_input CQ | 恢复OrderBook，检测已存在的trade_id |
+| ClearingWorker | 无 | - | 从account_settlement CQ生成processed_trade_ids |
 
-**注意**：
-- `processed_orders` 不单独保存快照，恢复时从 `order_snapshot` 提取订单ID用于幂等检查
-- `processed_trades` CM 使用 `createOrRecoverPersistedTo` 持久化到磁盘，重启后自动恢复，无需单独快照文件
+**恢复时幂等集合生成**：
+
+| 幂等集合 | 来源CQ | 读取范围 | 内存限制 |
+|---------|--------|---------|---------|
+| `processed_order_ids` | `matching_input.cq4` | matching_input_last_index → latest | 最新10,000个 |
+| `processed_trade_ids` | `account_settlement.cq4` | account_settlement_index → latest | 最新10,000个 |
+| `processed_settlement_ids` | 内存维护 | - | 最新10,000个 |
 
 ### 17.7 恢复流程
 
-```java
-public void recover() {
-    log.info("Starting recovery...");
+**恢复顺序**：AccountWorker → MatchingEngine → ClearingWorker → AccountWorker（第二轮处理SETTLEMENT）
 
-    // 1. 找到最新的有效快照文件（验证checksum，损坏则回退到旧快照）
-    long accountSnapshotIndex = findLatestValidSnapshotIndex("account_snapshot_*.dat");
-    long matchSnapshotIndex = findLatestValidSnapshotIndex("orderbook_snapshot_*.dat");
-    long clearingIndex = readClearingIndex();
+1. **AccountWorker恢复**：
+   - 查找最新有效快照文件（验证checksum，损坏则回退到旧快照）
+   - 加载account_snapshot_{index}.dat：
+     - accounts → ConcurrentHashMap<Long, Account>
+     - positions → ConcurrentHashMap<String, Position>
+     - 获取account_input_index, account_settlement_index, matching_input_last_index
+   - 生成processed_order_ids：
+     - 从matching_input CQ的matching_input_last_index位置读取到最新位置
+     - 提取所有order_id，加入processed_order_ids集合
+     - 内存中仅保留最新10,000个order_id
+   - 生成processed_trade_ids：
+     - 从account_settlement CQ的account_settlement_index位置读取到最新位置
+     - 提取所有trade_id，加入processed_trade_ids集合
+     - 内存中仅保留最新10,000个trade_id
+   - 重放account_input CQ从account_input_index+1开始：
+     - 处理NEW_ORDER/CANCEL_ORDER/DEPOSIT等事件
+     - 写入matching_input CQ和account_output CQ
 
-    // 如果无有效快照，从CQ起点重放
-    if (accountSnapshotIndex < 0) {
-        log.warn("No valid account snapshot, will replay from CQ start");
-        accountSnapshotIndex = 0;
-    }
-    if (matchSnapshotIndex < 0) {
-        log.warn("No valid match snapshot, will replay from CQ start");
-        matchSnapshotIndex = 0;
-    }
+2. **MatchingEngine恢复**：
+   - 查找最新有效快照文件
+   - 加载matching_snapshot_{index}.dat：
+     - active_orders → 各symbol的OrderBook
+     - 获取matching_input_index, matching_output_last_index
+   - 设置replay_mode=true
+   - 读取matching_output CQ中已有的trade_id：
+     - 从开始位置读取到matching_output_last_index
+     - 提取所有trade_id，加入existing_trade_ids集合
+   - 重放matching_input CQ从matching_input_index+1开始：
+     - 处理NEW_ORDER事件，执行撮合
+     - 若生成的trade_id在existing_trade_ids中，跳过TRADE事件写入
+     - 遇到第一个新trade_id时，设置replay_mode=false
+     - 处理CANCEL_ORDER事件，生成CANCEL_SUCCESS/CANCEL_REJECT
+     - 写入matching_output CQ
 
-    log.info("Snapshot indices: account={}, match={}, clearing={}",
-             accountSnapshotIndex, matchSnapshotIndex, clearingIndex);
+3. **ClearingWorker恢复**：
+   - 生成processed_trade_ids：
+     - 从account_settlement CQ读取最新10,000个事件
+     - 提取所有trade_id，加入processed_trade_ids集合
+   - 重放matching_output CQ从开始位置：
+     - 处理ORDER_UPDATE事件，更新订单状态
+     - 处理TRADE事件：
+       - 若trade_id在processed_trade_ids中，跳过
+       - 否则生成SETTLEMENT事件写入account_settlement CQ
+       - 将trade_id加入processed_trade_ids
+     - 处理CANCEL_SUCCESS事件，生成UNFREEZE事件写入account_settlement CQ
+     - 处理CANCEL_REJECT事件，推送WebSocket通知
 
-    // 2. 加载 AccountWorker 快照到内存
-    loadAccountSnapshot(accountSnapshotIndex);
-    loadPositionSnapshot(accountSnapshotIndex);
-    loadOrderSnapshot(accountSnapshotIndex);
-    loadProcessedSettlements(accountSnapshotIndex);  // 加载已处理结算ID
+4. **AccountWorker第二轮恢复**：
+   - 重放account_settlement CQ从account_settlement_index+1开始：
+     - 处理SETTLEMENT事件：
+       - 使用processed_settlement_ids幂等检查（内存维护最新10,000个）
+       - 更新账户余额和持仓
+       - 写入account_output CQ用于WebSocket推送
+     - 处理UNFREEZE事件：
+       - 解冻资金/持仓
+       - 写入account_output CQ用于WebSocket推送
 
-    // 3. 加载 MatchingEngine 快照到内存
-    loadOrderbookSnapshot(matchSnapshotIndex);
-    // 从订单快照中提取已处理订单ID用于幂等检查
-    loadProcessedOrdersFromOrderSnapshot(matchSnapshotIndex);
-
-    // 4. 加载 ClearingWorker 已处理成交ID
-    loadProcessedTrades(clearingIndex);  // 加载已处理成交ID
-
-    // 5. 重放 incoming_event CQ 从 accountSnapshotIndex+1 开始
-    //    (SETTLEMENT/UNFREEZE 事件需要 AccountWorker 处理)
-    replayIncomingEvents(accountSnapshotIndex + 1);
-
-    // 6. 重放 match_orders CQ 从 matchSnapshotIndex+1 开始
-    //    MatchingEngine会通过 processedOrdersCM 幂等跳过已处理订单
-    replayMatchOrders(matchSnapshotIndex + 1);
-
-    // 7. 重放 trades CQ 从 clearingIndex+1 开始
-    //    ClearingWorker会通过 processedTradesCM 幂等跳过已处理成交
-    replayTrades(clearingIndex + 1);
-
-    log.info("Recovery completed");
-}
-
-private void loadProcessedTrades(long index) {
-    Path file = Paths.get("data/snapshots/processed_trades_" + index + ".dat");
-    if (Files.exists(file)) {
-        ChronicleMap<String, Boolean> cm = ChronicleMap.createFromFile(file.toString());
-        for (Map.Entry<String, Boolean> e : cm.entrySet()) {
-            processedTradesCM.put(e.getKey(), e.getValue());
-        }
-        cm.close();
-        log.info("Loaded {} processed trades from snapshot at index {}",
-                 processedTradesCM.size(), index);
-    }
-}
-
-private void loadProcessedSettlements(long index) {
-    Path file = Paths.get("data/snapshots/processed_settlements_" + index + ".dat");
-    if (Files.exists(file)) {
-        ChronicleMap<String, Boolean> cm = ChronicleMap.createFromFile(file.toString());
-        for (Map.Entry<String, Boolean> e : cm.entrySet()) {
-            processedSettlementsCM.put(e.getKey(), e.getValue());
-        }
-        cm.close();
-        log.info("Loaded {} processed settlements from snapshot at index {}",
-                 processedSettlementsCM.size(), index);
-    }
-}
-
-private void loadProcessedOrdersFromOrderSnapshot(long index) {
-    // 从订单快照中提取已处理订单ID（订单快照包含所有已进入撮合引擎的订单）
-    Path file = Paths.get("data/snapshots/order_snapshot_" + index + ".dat");
-    if (Files.exists(file)) {
-        ChronicleMap<Long, Order> cm = ChronicleMap.createFromFile(file.toString());
-        for (Map.Entry<Long, Order> e : cm.entrySet()) {
-            processedOrdersSet.add(e.getKey());  // 订单ID用于幂等检查
-        }
-        cm.close();
-        log.info("Loaded {} processed order IDs from order snapshot at index {}",
-                 processedOrdersSet.size(), index);
-    }
-}
-
-private void loadAccountSnapshot(long index) {
-    Path file = Paths.get("data/snapshots/account_snapshot_" + index + ".dat");
-    if (!Files.exists(file)) {
-        log.warn("Account snapshot file not found: {}", file);
-        return;
-    }
-    ChronicleMap<Long, Account> accountCM = ChronicleMap.createFromFile(file.toString());
-
-    for (Map.Entry<Long, Account> e : accountCM.entrySet()) {
-        accounts.put(e.getKey(), copyAccount(e.getValue()));
-    }
-    accountCM.close();
-
-    log.info("Loaded {} accounts from snapshot at index {}", accounts.size(), index);
-}
-
-private void loadPositionSnapshot(long index) {
-    Path file = Paths.get("data/snapshots/position_snapshot_" + index + ".dat");
-    if (!Files.exists(file)) {
-        log.warn("Position snapshot file not found: {}", file);
-        return;
-    }
-    ChronicleMap<String, Position> positionCM = ChronicleMap.createFromFile(file.toString());
-
-    for (Map.Entry<String, Position> e : positionCM.entrySet()) {
-        positions.put(e.getKey(), copyPosition(e.getValue()));
-    }
-    positionCM.close();
-
-    log.info("Loaded {} positions from snapshot at index {}", positions.size(), index);
-}
-
-/**
- * 深拷贝账户对象（Chronicle Map值类型需要显式拷贝）
- */
-private Account copyAccount(Account source) {
-    Account copy = new Account();
-    copy.accountId = source.accountId;
-    copy.userId = source.userId;
-    copy.balance = source.balance;
-    copy.available = source.available;
-    copy.frozen = source.frozen;
-    copy.marginFrozen = source.marginFrozen;
-    copy.orderFrozen = source.orderFrozen;
-    copy.debt = source.debt;
-    copy.unrealizedPnl = source.unrealizedPnl;
-    copy.status = source.status;
-    copy.riskRatio = source.riskRatio;
-    copy.updateTime = source.updateTime;
-    return copy;
-}
-
-/**
- * 深拷贝持仓对象
- */
-private Position copyPosition(Position source) {
-    Position copy = new Position();
-    copy.accountId = source.accountId;
-    copy.symbol = source.symbol;
-    copy.symbolCode = source.symbolCode;
-    copy.quantity = source.quantity;
-    copy.available = source.available;
-    copy.frozen = source.frozen;
-    copy.t1Locked = source.t1Locked;
-    copy.avgPrice = source.avgPrice;
-    copy.unrealizedPnl = source.unrealizedPnl;
-    copy.updateTime = source.updateTime;
-    return copy;
-}
-```
+**恢复完成标志**：
+- 所有CQ重放完成
+- 幂等集合建立完毕
+- 内存状态与快照点之后的事件一致
 
 ### 17.8 RPO/RTO 保证
 
@@ -4171,78 +3783,46 @@ private Position copyPosition(Position source) {
 
 ### 18.1 关闭流程
 
-```java
-public class ShutdownHook implements Runnable {
+```
+ShutdownHook:
 
-    @Override
-    public void run() {
-        log.info("Shutdown signal received, starting graceful shutdown...");
+1. 停止接收新请求（HTTP不再accept新连接）
+   httpServer.stopAccepting();
 
-        // 1. 停止接收新请求（HTTP不再accept新连接）
-        httpServer.stopAccepting();
-        log.info("HTTP server stopped accepting new requests");
+2. 等待现有HTTP请求完成（最长3秒）
+   Thread.sleep(3000);
 
-        // 2. 等待现有HTTP请求完成（最长3秒）
-        Thread.sleep(3000);
-        log.info("Waited 3s for pending HTTP requests");
+3. 强制写入SNAPSHOT事件到CQ
+   long accountIndex = accountInputCQ.writeSnapshotEvent();
+   long matchIndex = matchingInputCQ.writeSnapshotEvent();
 
-        // 3. 强制写入SNAPSHOT事件到CQ
-        long incomingIndex = incomingEventCQ.writeSnapshotEvent();
-        long matchIndex = matchOrdersCQ.writeSnapshotEvent();
-        log.info("SNAPSHOT events written: incoming={}, match={}", incomingIndex, matchIndex);
+4. 等待Worker处理完SNAPSHOT（最长5秒）
+   awaitSnapshotComplete("account_snapshot_" + accountIndex + ".dat", 5000);
+   awaitSnapshotComplete("matching_snapshot_" + matchIndex + ".dat", 5000);
 
-        // 4. 等待Worker处理完SNAPSHOT（最长5秒）
-        awaitSnapshotComplete("account_snapshot_" + incomingIndex + ".dat", 5000);
-        awaitSnapshotComplete("orderbook_snapshot_" + matchIndex + ".dat", 5000);
-        log.info("Workers completed snapshot processing");
+5. 停止Worker线程
+   accountWorker.stop();
+   matchingEngine.stop();
+   clearingWorker.stop();
 
-        // 5. 停止Worker线程
-        accountWorker.stop();
-        matchingEngine.stop();
-        clearingWorker.stop();
-        log.info("Workers stopped");
+6. 检查是否有未处理事件（诊断用）
+   long remainingAccountInput = accountInputQueue.remaining();
+   long remainingMatchingInput = matchingInputQueue.remaining();
+   long remainingMatchingOutput = matchingOutputQueue.remaining();
+   long remainingAccountSettlement = accountSettlementQueue.remaining();
 
-        // 6. 检查是否有未处理事件（诊断用）
-        long remainingIncoming = incomingEventQueue.remaining();
-        long remainingMatch = matchOrdersQueue.remaining();
-        long remainingTrade = tradeQueue.remaining();
-        if (remainingIncoming > 0 || remainingMatch > 0 || remainingTrade > 0) {
-            log.warn("Remaining events: incoming={}, match={}, trade={}",
-                     remainingIncoming, remainingMatch, remainingTrade);
-        }
+7. 关闭CQ文件
+   accountInputQueue.close();
+   accountOutputQueue.close();
+   matchingInputQueue.close();
+   matchingOutputQueue.close();
+   accountSettlementQueue.close();
 
-        // 7. 关闭CQ文件
-        incomingEventQueue.close();
-        matchOrdersQueue.close();
-        tradeQueue.close();
-        log.info("CQ files closed");
+8. 关闭H2数据库
+   h2DataSource.close();
 
-        // 8. 关闭H2数据库
-        h2DataSource.close();
-        log.info("H2 database closed");
-
-        // 9. 关闭WebSocket
-        webSocketServer.close();
-        log.info("WebSocket server closed");
-
-        log.info("Graceful shutdown completed");
-    }
-
-    private void awaitSnapshotComplete(String filename, long timeoutMs) {
-        Path file = Paths.get("data/snapshots/" + filename);
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            if (Files.exists(file)) {
-                return;
-            }
-            Thread.sleep(100);
-        }
-        log.warn("Snapshot timeout: {}", filename);
-    }
-}
-
-// 注册关闭钩子
-Runtime.getRuntime().addShutdownHook(new Thread(new ShutdownHook()));
+9. 关闭WebSocket
+   webSocketServer.close();
 ```
 
 ### 18.2 关闭时序图
