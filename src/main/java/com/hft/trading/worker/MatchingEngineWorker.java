@@ -451,6 +451,13 @@ public class MatchingEngineWorker implements Runnable {
     public void setReplayMode(boolean replayMode) { this.replayMode = replayMode; }
 
     /**
+     * 获取撮合引擎 Map
+     */
+    public Map<String, com.hft.trading.matching.MatchingEngine> getMatchingEngines() {
+        return matchingEngines;
+    }
+
+    /**
      * 获取五档行情
      */
     public com.hft.trading.matching.OrderBook.FiveLevelQuote getFiveLevelQuote(String symbol) {
