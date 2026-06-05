@@ -8,6 +8,8 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.websocketx.*;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -300,6 +302,19 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         logger.error("WebSocket exception: {}", cause.getMessage());
         ctx.close();
+    }
+
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        if (evt instanceof IdleStateEvent) {
+            IdleStateEvent idleEvent = (IdleStateEvent) evt;
+            if (idleEvent.state() == IdleState.READER_IDLE) {
+                // Client hasn't sent any data (including ping) for 90 seconds, close connection
+                logger.warn("Client idle timeout, closing connection: channel={}", ctx.channel().id());
+                ctx.close();
+            }
+        }
+        super.userEventTriggered(ctx, evt);
     }
 
     /**

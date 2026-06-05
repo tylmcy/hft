@@ -5,6 +5,9 @@ import com.hft.trading.event.TradingPhase;
 import com.hft.trading.queue.*;
 import com.hft.trading.recovery.RecoveryManager;
 import com.hft.trading.store.*;
+import com.hft.trading.websocket.MarketDataPublisher;
+import com.hft.trading.websocket.WebSocketPushService;
+import com.hft.trading.websocket.WebSocketServer;
 import com.hft.trading.worker.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +40,11 @@ public class LifecycleManager {
 
     // 队列
     private final QueueManager queueManager;
+
+    // WebSocket（可选）
+    private WebSocketServer webSocketServer;
+    private WebSocketPushService webSocketPushService;
+    private MarketDataPublisher marketDataPublisher;
 
     // Workers
     private AccountWorker accountWorker;
@@ -158,7 +166,8 @@ public class LifecycleManager {
             null, // FutureManager - 简化处理
             queueManager.getAccountInputQueue(),
             queueManager.getMatchingInputQueue(),
-            queueManager.getAccountSettlementQueue()
+            queueManager.getAccountSettlementQueue(),
+            webSocketPushService // WebSocket推送服务
         );
 
         // MatchingEngineWorker
@@ -166,7 +175,8 @@ public class LifecycleManager {
             orderStore,
             instrumentStore,
             queueManager.getMatchingInputQueue(),
-            queueManager.getMatchingOutputQueue()
+            queueManager.getMatchingOutputQueue(),
+            webSocketPushService // WebSocket推送服务
         );
 
         // ClearingWorker
@@ -174,7 +184,8 @@ public class LifecycleManager {
             orderStore,
             instrumentStore,
             queueManager.getMatchingOutputQueue(),
-            queueManager.getAccountSettlementQueue()
+            queueManager.getAccountSettlementQueue(),
+            webSocketPushService // WebSocket推送服务
         );
 
         // Create RecoveryManager
@@ -195,7 +206,14 @@ public class LifecycleManager {
             clearingWorker
         );
 
-        logger.info("Workers initialized: AccountWorker, MatchingEngineWorker, ClearingWorker, RecoveryManager");
+        // Create MarketDataPublisher (optional, depends on WebSocket)
+        if (webSocketServer != null) {
+            marketDataPublisher = new MarketDataPublisher(webSocketServer);
+            marketDataPublisher.setMatchingEngines(matchingEngineWorker.getMatchingEngines());
+        }
+
+        logger.info("Workers initialized: AccountWorker, MatchingEngineWorker, ClearingWorker, RecoveryManager" +
+            (marketDataPublisher != null ? ", MarketDataPublisher" : ""));
     }
 
     /**
@@ -235,6 +253,12 @@ public class LifecycleManager {
         clearingWorker.start();
         sleep(100);
 
+        // 启动 MarketDataPublisher（在所有 Workers 之后）
+        if (marketDataPublisher != null) {
+            marketDataPublisher.start();
+            sleep(100);
+        }
+
         logger.info("All workers started");
     }
 
@@ -243,6 +267,11 @@ public class LifecycleManager {
      */
     private void stopAllWorkers() {
         logger.info("Stopping all workers...");
+
+        // 先停止 MarketDataPublisher
+        if (marketDataPublisher != null) {
+            marketDataPublisher.stop();
+        }
 
         if (clearingWorker != null) {
             clearingWorker.stop();
@@ -327,6 +356,22 @@ public class LifecycleManager {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * 设置 WebSocket 推送服务
+     * 用于 Spring 注入 WebSocketPushService
+     */
+    public void setWebSocketPushService(WebSocketPushService webSocketPushService) {
+        this.webSocketPushService = webSocketPushService;
+    }
+
+    /**
+     * 设置 WebSocket 服务器
+     * 用于 Spring 注入 WebSocketServer
+     */
+    public void setWebSocketServer(WebSocketServer webSocketServer) {
+        this.webSocketServer = webSocketServer;
     }
 
     // Getters for Workers

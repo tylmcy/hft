@@ -12,6 +12,7 @@ import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryInstrumentStore;
 import com.hft.trading.store.InMemoryOrderStore;
 import com.hft.trading.store.InMemoryPositionStore;
+import com.hft.trading.websocket.WebSocketPushService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +42,9 @@ public class AccountWorker implements Runnable {
     private final InMemoryInstrumentStore instrumentStore;
     private final FutureManager futureManager;
 
+    // WebSocket推送服务（可选）
+    private final WebSocketPushService webSocketPushService;
+
     // 队列
     private final AccountInputQueue accountInputQueue;
     private final MatchingInputQueue matchingInputQueue;
@@ -67,7 +71,8 @@ public class AccountWorker implements Runnable {
                          FutureManager futureManager,
                          AccountInputQueue accountInputQueue,
                          MatchingInputQueue matchingInputQueue,
-                         AccountSettlementQueue accountSettlementQueue) {
+                         AccountSettlementQueue accountSettlementQueue,
+                         WebSocketPushService webSocketPushService) {
         this.accountStore = accountStore;
         this.positionStore = positionStore;
         this.orderStore = orderStore;
@@ -76,6 +81,7 @@ public class AccountWorker implements Runnable {
         this.accountInputQueue = accountInputQueue;
         this.matchingInputQueue = matchingInputQueue;
         this.accountSettlementQueue = accountSettlementQueue;
+        this.webSocketPushService = webSocketPushService;
     }
 
     /**
@@ -247,6 +253,9 @@ public class AccountWorker implements Runnable {
         }
 
         logger.info("NEW_ORDER processed: orderId={}, status=PENDING", orderId);
+
+        // WebSocket推送订单状态更新
+        pushOrderUpdate(order, "PENDING");
 
         return new ProcessResult(true, "冻结成功", orderId);
     }
@@ -428,6 +437,9 @@ public class AccountWorker implements Runnable {
         logger.info("DEPOSIT completed: accountId={}, newBalance={}",
             accountId, account.getBalance());
 
+        // WebSocket推送账户资金变动
+        pushAccountUpdate(account);
+
         return new ProcessResult(true, "入金成功", null);
     }
 
@@ -496,6 +508,10 @@ public class AccountWorker implements Runnable {
 
         logger.info("Buyer settled: accountId={}, totalDeduction={}, refund={}",
             accountId, totalDeduction, refund);
+
+        // WebSocket推送账户和持仓变动
+        pushAccountUpdate(account);
+        pushPositionUpdate(accountId, event.getSymbol());
     }
 
     /**
@@ -518,6 +534,10 @@ public class AccountWorker implements Runnable {
         Account account = accountStore.getAccount(accountId);
         if (account != null) {
             accountStore.settleSell(accountId, netIncome);
+
+            // WebSocket推送账户和持仓变动
+            pushAccountUpdate(account);
+            pushPositionUpdate(accountId, event.getSymbol());
         }
 
         logger.info("Seller settled: accountId={}, netIncome={}", accountId, netIncome);
@@ -548,6 +568,76 @@ public class AccountWorker implements Runnable {
                 it.remove();
             }
         }
+    }
+
+    /**
+     * WebSocket推送辅助方法（null安全）
+     */
+    private void pushIfAvailable(Runnable pushAction) {
+        if (webSocketPushService != null) {
+            try {
+                pushAction.run();
+            } catch (Exception e) {
+                logger.warn("WebSocket push failed: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 推送订单状态更新
+     */
+    private void pushOrderUpdate(Order order, String status) {
+        pushIfAvailable(() -> {
+            WebSocketPushService.OrderUpdateMessage message = new WebSocketPushService.OrderUpdateMessage();
+            message.setOrderId(String.valueOf(order.getOrderId()));
+            message.setSymbol(order.getSymbol());
+            message.setSide(order.getSide().name());
+            message.setOrderType(order.getOrderType().name());
+            message.setQuantity(order.getQuantity());
+            message.setPrice(order.getPrice() / 100.0); // 分转元
+            message.setFilledQuantity(order.getFilledQuantity());
+            message.setAvgPrice(order.getFilledQuantity() > 0 ? order.getPrice() / 100.0 : 0.0);
+            message.setStatus(status);
+            webSocketPushService.pushOrderUpdate(order.getUserId(), message);
+        });
+    }
+
+    /**
+     * 推送账户资金变动
+     */
+    private void pushAccountUpdate(Account account) {
+        pushIfAvailable(() -> {
+            WebSocketPushService.AccountUpdateMessage message = new WebSocketPushService.AccountUpdateMessage();
+            message.setUserId(account.getUserId());
+            message.setBalance(account.getBalance() / 100.0); // 分转元
+            message.setAvailable(account.getAvailable() / 100.0);
+            message.setFrozen(account.getFrozen() / 100.0);
+            message.setUpdateTime(System.currentTimeMillis());
+            webSocketPushService.pushAccountUpdate(account.getUserId(), message);
+        });
+    }
+
+    /**
+     * 推送持仓变动
+     */
+    private void pushPositionUpdate(long accountId, String symbol) {
+        pushIfAvailable(() -> {
+            Position position = positionStore.getPosition(accountId, symbol);
+            if (position != null) {
+                Account account = accountStore.getAccount(accountId);
+                if (account != null) {
+                    WebSocketPushService.PositionUpdateMessage message = new WebSocketPushService.PositionUpdateMessage();
+                    message.setUserId(account.getUserId());
+                    message.setSymbol(symbol);
+                    message.setQuantity(position.getQuantity());
+                    message.setAvailable(position.getAvailable());
+                    message.setFrozen(position.getFrozen());
+                    message.setAvgCost(position.getAvgPrice() / 100.0); // 分转元
+                    message.setUpdateTime(System.currentTimeMillis());
+                    webSocketPushService.pushPositionUpdate(account.getUserId(), message);
+                }
+            }
+        });
     }
 
     // ==================== Getter ====================

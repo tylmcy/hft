@@ -12,6 +12,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.websocketx.*;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.TimeUnit;
 
 /**
  * WebSocketServer - WebSocket 服务器
@@ -71,6 +73,9 @@ public class WebSocketServer {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast(new HttpServerCodec());
                         pipeline.addLast(new HttpObjectAggregator(65536));
+                        // Add IdleStateHandler before WebSocketServerHandler
+                        // 90 seconds read idle timeout - disconnect if client doesn't send ping
+                        pipeline.addLast(new IdleStateHandler(90, 0, 0, TimeUnit.SECONDS));
                         pipeline.addLast(new WebSocketServerHandler(WebSocketServer.this, jwtService));
                     }
                 });

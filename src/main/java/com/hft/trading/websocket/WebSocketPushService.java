@@ -1,5 +1,6 @@
 package com.hft.trading.websocket;
 
+import com.hft.trading.model.KLine;
 import org.springframework.stereotype.Service;
 
 /**
@@ -54,6 +55,25 @@ public class WebSocketPushService {
      */
     public void pushPositionUpdate(long userId, PositionUpdateMessage message) {
         webSocketServer.sendToUser(userId, "position_update", message);
+    }
+
+    /**
+     * 推送K线数据
+     */
+    public void pushKLine(KLine kline) {
+        KLineMessage message = new KLineMessage();
+        message.setSymbol(kline.getSymbol());
+        message.setInterval(kline.getInterval());
+        message.setOpenTime(kline.getOpenTime());
+        message.setCloseTime(kline.getCloseTime());
+        message.setOpenPrice(kline.getOpenPrice() / 10000.0); // 分转元
+        message.setHighPrice(kline.getHighPrice() / 10000.0);
+        message.setLowPrice(kline.getLowPrice() / 10000.0);
+        message.setClosePrice(kline.getClosePrice() / 10000.0);
+        message.setVolume(kline.getVolume());
+        message.setAmount(kline.getAmount() / 10000.0);
+        message.setTradeCount(kline.getTradeCount());
+        webSocketServer.broadcast("kline", kline.getSymbol(), message);
     }
 
     // ========== Inner Message DTOs ==========
@@ -400,6 +420,111 @@ public class WebSocketPushService {
 
         public void setUpdateTime(Long updateTime) {
             this.updateTime = updateTime;
+        }
+    }
+
+    /**
+     * K线数据消息
+     */
+    public static class KLineMessage {
+        private String symbol;
+        private String interval;
+        private Long openTime;
+        private Long closeTime;
+        private Double openPrice;
+        private Double highPrice;
+        private Double lowPrice;
+        private Double closePrice;
+        private Long volume;
+        private Double amount;
+        private Integer tradeCount;
+
+        public String getSymbol() {
+            return symbol;
+        }
+
+        public void setSymbol(String symbol) {
+            this.symbol = symbol;
+        }
+
+        public String getInterval() {
+            return interval;
+        }
+
+        public void setInterval(String interval) {
+            this.interval = interval;
+        }
+
+        public Long getOpenTime() {
+            return openTime;
+        }
+
+        public void setOpenTime(Long openTime) {
+            this.openTime = openTime;
+        }
+
+        public Long getCloseTime() {
+            return closeTime;
+        }
+
+        public void setCloseTime(Long closeTime) {
+            this.closeTime = closeTime;
+        }
+
+        public Double getOpenPrice() {
+            return openPrice;
+        }
+
+        public void setOpenPrice(Double openPrice) {
+            this.openPrice = openPrice;
+        }
+
+        public Double getHighPrice() {
+            return highPrice;
+        }
+
+        public void setHighPrice(Double highPrice) {
+            this.highPrice = highPrice;
+        }
+
+        public Double getLowPrice() {
+            return lowPrice;
+        }
+
+        public void setLowPrice(Double lowPrice) {
+            this.lowPrice = lowPrice;
+        }
+
+        public Double getClosePrice() {
+            return closePrice;
+        }
+
+        public void setClosePrice(Double closePrice) {
+            this.closePrice = closePrice;
+        }
+
+        public Long getVolume() {
+            return volume;
+        }
+
+        public void setVolume(Long volume) {
+            this.volume = volume;
+        }
+
+        public Double getAmount() {
+            return amount;
+        }
+
+        public void setAmount(Double amount) {
+            this.amount = amount;
+        }
+
+        public Integer getTradeCount() {
+            return tradeCount;
+        }
+
+        public void setTradeCount(Integer tradeCount) {
+            this.tradeCount = tradeCount;
         }
     }
 }

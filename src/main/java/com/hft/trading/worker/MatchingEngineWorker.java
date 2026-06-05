@@ -9,6 +9,7 @@ import com.hft.trading.queue.*;
 import com.hft.trading.snapshot.MatchingSnapshotWriter;
 import com.hft.trading.store.InMemoryInstrumentStore;
 import com.hft.trading.store.InMemoryOrderStore;
+import com.hft.trading.websocket.WebSocketPushService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +39,9 @@ public class MatchingEngineWorker implements Runnable {
     private final InMemoryOrderStore orderStore;
     private final InMemoryInstrumentStore instrumentStore;
 
+    // WebSocket推送服务（可选）
+    private final WebSocketPushService webSocketPushService;
+
     // 队列
     private final MatchingInputQueue matchingInputQueue;
     private final MatchingOutputQueue matchingOutputQueue;
@@ -57,11 +61,13 @@ public class MatchingEngineWorker implements Runnable {
     public MatchingEngineWorker(InMemoryOrderStore orderStore,
                                 InMemoryInstrumentStore instrumentStore,
                                 MatchingInputQueue matchingInputQueue,
-                                MatchingOutputQueue matchingOutputQueue) {
+                                MatchingOutputQueue matchingOutputQueue,
+                                WebSocketPushService webSocketPushService) {
         this.orderStore = orderStore;
         this.instrumentStore = instrumentStore;
         this.matchingInputQueue = matchingInputQueue;
         this.matchingOutputQueue = matchingOutputQueue;
+        this.webSocketPushService = webSocketPushService;
     }
 
     /**
@@ -440,6 +446,38 @@ public class MatchingEngineWorker implements Runnable {
                 it.remove();
             }
         }
+    }
+
+    /**
+     * WebSocket推送辅助方法（null安全）
+     */
+    private void pushIfAvailable(Runnable pushAction) {
+        if (webSocketPushService != null) {
+            try {
+                pushAction.run();
+            } catch (Exception e) {
+                logger.warn("WebSocket push failed: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 推送订单状态更新
+     */
+    private void pushOrderUpdate(Order order, String status) {
+        pushIfAvailable(() -> {
+            WebSocketPushService.OrderUpdateMessage message = new WebSocketPushService.OrderUpdateMessage();
+            message.setOrderId(String.valueOf(order.getOrderId()));
+            message.setSymbol(order.getSymbol());
+            message.setSide(order.getSide().name());
+            message.setOrderType(order.getOrderType().name());
+            message.setQuantity(order.getQuantity());
+            message.setPrice(order.getPrice() / 100.0); // 分转元
+            message.setFilledQuantity(order.getFilledQuantity());
+            message.setAvgPrice(order.getFilledQuantity() > 0 ? order.getPrice() / 100.0 : 0.0);
+            message.setStatus(status);
+            webSocketPushService.pushOrderUpdate(order.getUserId(), message);
+        });
     }
 
     // ==================== Getter ====================
