@@ -1,0 +1,64 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: hft-trading
+  threads:
+    virtual:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# H2 数据库配置
+  datasource:
+    url: jdbc:h2:file:./data/h2/trading;DB_CLOSE_ON_EXIT=FALSE;AUTO_RECONNECT=TRUE;INIT=RUNSCRIPT FROM 'classpath:schema.sql'
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+# 交易系统配置
+trading:
+  chronicle:
+    base-path: ./data/chronicle/
+  h2:
+    database-path: ./data/h2/trading
+  snapshot:
+    interval-ms: 60000
+  batch:
+    size: 50
+    timeout-ms: 1
+  clearing:
+    batch-size: 100
+  idempotent-set-max-size: 10000
+  future:
+    timeout-ms: 5000
+  jwt:
+    access-token-expiration: 7200000
+    refresh-token-expiration: 604800000
+    secret-key: ${TRADING_JWT_SECRET:default-secret-key-for-development-only}
+  rate-limit:
+    order-tps: 100
+    query-qps: 1000
+  ws:
+    idle-timeout-ms: 90000
+    heartbeat-ms: 30000
+    subscribe-rate-limit: 10
+    max-symbols-per-subscription: 50
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.hft.trading: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
