@@ -1,6 +1,7 @@
 package com.hft.trading.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hft.trading.security.JwtService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -34,7 +35,8 @@ public class WebSocketServer {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServer.class);
 
-    private final int port;
+    private final int port = 8081;
+    private final JwtService jwtService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Netty 组件
@@ -47,8 +49,8 @@ public class WebSocketServer {
     private final Map<Channel, Set<String>> channelSubscriptions = new ConcurrentHashMap<>();
     private final Map<Long, Set<Channel>> userChannels = new ConcurrentHashMap<>();
 
-    public WebSocketServer() {
-        this.port = 8081; // WebSocket 端口
+    public WebSocketServer(JwtService jwtService) {
+        this.jwtService = jwtService;
     }
 
     /**
@@ -69,7 +71,7 @@ public class WebSocketServer {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast(new HttpServerCodec());
                         pipeline.addLast(new HttpObjectAggregator(65536));
-                        pipeline.addLast(new WebSocketServerHandler(WebSocketServer.this));
+                        pipeline.addLast(new WebSocketServerHandler(WebSocketServer.this, jwtService));
                     }
                 });
 
