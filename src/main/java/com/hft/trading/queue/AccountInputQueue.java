@@ -120,9 +120,15 @@ public class AccountInputQueue {
 
     /**
      * 获取当前写入位置
+     * 返回 -1 表示没有数据
      */
     public long getLastIndex() {
-        return appender.lastIndexAppended();
+        try {
+            return appender.lastIndexAppended();
+        } catch (IllegalStateException e) {
+            // 队列中没有数据
+            return -1;
+        }
     }
 
     /**

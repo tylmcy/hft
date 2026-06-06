@@ -413,11 +413,18 @@ public class LifecycleManager implements SmartLifecycle {
     private void waitForQueuesToDrain(long timeoutMs) {
         long startTime = System.currentTimeMillis();
         while (System.currentTimeMillis() - startTime < timeoutMs) {
-            QueueManager.QueueStats stats = queueManager.getStats();
-            // 简化：检查是否有待处理事件
-            if (stats.getAccountInputLastIndex() <= stats.getAccountInputCurrentIndex()) {
-                logger.info("Queues drained");
-                return;
+            try {
+                QueueManager.QueueStats stats = queueManager.getStats();
+                // 检查是否有待处理事件
+                // lastIndex 为 -1 表示队列为空
+                long lastIndex = stats.getAccountInputLastIndex();
+                long currentIndex = stats.getAccountInputCurrentIndex();
+                if (lastIndex < 0 || lastIndex <= currentIndex) {
+                    logger.info("Queues drained (lastIndex={}, currentIndex={})", lastIndex, currentIndex);
+                    return;
+                }
+            } catch (Exception e) {
+                logger.warn("Error checking queue stats: {}", e.getMessage());
             }
             sleep(100);
         }

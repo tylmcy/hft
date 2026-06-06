@@ -196,7 +196,11 @@ public class AccountSettlementQueue {
     }
 
     public long getLastIndex() {
-        return appender.lastIndexAppended();
+        try {
+            return appender.lastIndexAppended();
+        } catch (IllegalStateException e) {
+            return -1;
+        }
     }
 
     public long getCurrentIndex() {
