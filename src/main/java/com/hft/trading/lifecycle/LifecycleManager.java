@@ -11,11 +11,13 @@ import com.hft.trading.websocket.WebSocketServer;
 import com.hft.trading.worker.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import javax.sql.DataSource;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * LifecycleManager - 系统生命周期管理器
@@ -26,12 +28,15 @@ import javax.sql.DataSource;
  * - Worker 生命周期管理
  */
 @Component
-public class LifecycleManager {
+public class LifecycleManager implements SmartLifecycle {
 
     private static final Logger logger = LoggerFactory.getLogger(LifecycleManager.class);
 
     // 系统状态
     private volatile SystemStatus systemStatus = SystemStatus.STARTING;
+
+    // SmartLifecycle running 标志
+    private volatile boolean running = false;
 
     // 存储
     private final InMemoryAccountStore accountStore;
@@ -95,10 +100,15 @@ public class LifecycleManager {
     }
 
     /**
-     * 系统启动入口
+     * 系统启动入口 - SmartLifecycle.start()
      */
-    @PostConstruct
-    public void startup() {
+    @Override
+    public void start() {
+        if (running) {
+            logger.warn("LifecycleManager already running");
+            return;
+        }
+
         logger.info("=== HFT Trading System Starting ===");
         logger.info("System status: STARTING");
 
@@ -110,50 +120,61 @@ public class LifecycleManager {
             if (needsRecovery()) {
                 systemStatus = SystemStatus.RECOVERING;
                 logger.info("System status: RECOVERING");
-                performRecovery();
+                performRecoveryWithTimeout();
             }
 
             // 3. 启动所有 Workers
             startAllWorkers();
 
-            // 4. 系统就绪
+            // 4. 等待所有 Workers 就绪
+            waitForWorkersReady();
+
+            // 5. 系统就绪
             systemStatus = SystemStatus.RUNNING;
+            running = true;
             logger.info("System status: RUNNING");
             logger.info("=== HFT Trading System Started Successfully ===");
 
         } catch (Exception e) {
             logger.error("System startup failed: {}", e.getMessage(), e);
             systemStatus = SystemStatus.DEGRADED;
+            running = true; // 仍标记为 running，让容器启动
         }
     }
 
     /**
-     * 系统关闭
+     * 系统关闭 - 优雅停机
+     *
+     * 流程：
+     * 1. 设置 SHUTTING_DOWN 状态，立即拒绝新请求
+     * 2. 等待 15 秒让队列清空（处理已接收的请求）
+     * 3. 触发最终快照（保证 RPO=0）
+     * 4. 勒令停止所有 Workers
+     * 5. 关闭队列
      */
-    @PreDestroy
     public void shutdown() {
         logger.info("=== HFT Trading System Shutting Down ===");
+
+        // 1. 立即设置状态，拒绝新请求
         systemStatus = SystemStatus.SHUTTING_DOWN;
-        logger.info("System status: SHUTTING_DOWN");
+        logger.info("System status: SHUTTING_DOWN - rejecting new requests");
 
         try {
-            // 1. 停止接收新请求
-            logger.info("Step 1: Stopping new requests...");
-
-            // 2. 等待队列清空
-            logger.info("Step 2: Waiting for queues to drain...");
-            waitForQueuesToDrain(5000);
+            // 2. 等待队列清空（最多 15 秒）
+            logger.info("Step 1: Waiting for queues to drain (max 15s)...");
+            long drainTimeoutMs = 15_000;
+            waitForQueuesToDrain(drainTimeoutMs);
 
             // 3. 触发最终快照
-            logger.info("Step 3: Triggering final snapshot...");
+            logger.info("Step 2: Triggering final snapshot...");
             triggerFinalSnapshot();
 
-            // 4. 停止所有 Workers
-            logger.info("Step 4: Stopping all workers...");
+            // 4. 勒令停止所有 Workers
+            logger.info("Step 3: Stopping all workers...");
             stopAllWorkers();
 
             // 5. 关闭队列
-            logger.info("Step 5: Closing queues...");
+            logger.info("Step 4: Closing queues...");
             queueManager.closeAll();
 
             logger.info("=== HFT Trading System Shutdown Complete ===");
@@ -260,6 +281,35 @@ public class LifecycleManager {
     }
 
     /**
+     * 带超时的恢复执行
+     */
+    private void performRecoveryWithTimeout() {
+        long timeoutMs = 60_000; // 60 秒超时
+        logger.info("Starting recovery with {}ms timeout", timeoutMs);
+
+        CompletableFuture<Void> recoveryFuture = CompletableFuture.runAsync(() -> {
+            try {
+                recoveryManager.performRecovery();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        try {
+            recoveryFuture.get(timeoutMs, TimeUnit.MILLISECONDS);
+            logger.info("Recovery completed successfully");
+        } catch (TimeoutException e) {
+            logger.error("Recovery timeout after {}ms", timeoutMs);
+            systemStatus = SystemStatus.DEGRADED;
+            throw new RuntimeException("Recovery timeout", e);
+        } catch (Exception e) {
+            logger.error("Recovery failed: {}", e.getMessage(), e);
+            systemStatus = SystemStatus.DEGRADED;
+            throw new RuntimeException("Recovery failed", e);
+        }
+    }
+
+    /**
      * 启动所有 Workers
      */
     private void startAllWorkers() {
@@ -288,6 +338,42 @@ public class LifecycleManager {
         }
 
         logger.info("All workers started");
+    }
+
+    /**
+     * 等待所有 Workers 就绪
+     */
+    private void waitForWorkersReady() {
+        long timeoutMs = 60_000; // 60 秒超时
+        long startTime = System.currentTimeMillis();
+        long checkIntervalMs = 100;
+
+        logger.info("Waiting for all workers to be ready...");
+
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            boolean accountReady = accountWorker != null && accountWorker.isReady();
+            boolean matchingReady = matchingEngineWorker != null && matchingEngineWorker.isReady();
+            boolean clearingReady = clearingWorker != null && clearingWorker.isReady();
+            boolean persistenceReady = asyncPersistenceWorker == null || asyncPersistenceWorker.isReady();
+
+            if (accountReady && matchingReady && clearingReady && persistenceReady) {
+                logger.info("All workers ready after {}ms", System.currentTimeMillis() - startTime);
+                return;
+            }
+
+            sleep(checkIntervalMs);
+        }
+
+        // 超时处理
+        logger.error("Workers not ready after {}ms", timeoutMs);
+        logger.error("Ready status: AccountWorker={}, MatchingEngineWorker={}, ClearingWorker={}, AsyncPersistenceWorker={}",
+            accountWorker != null && accountWorker.isReady(),
+            matchingEngineWorker != null && matchingEngineWorker.isReady(),
+            clearingWorker != null && clearingWorker.isReady(),
+            asyncPersistenceWorker != null && asyncPersistenceWorker.isReady());
+
+        systemStatus = SystemStatus.DEGRADED;
+        throw new RuntimeException("Workers startup timeout");
     }
 
     /**
@@ -412,4 +498,34 @@ public class LifecycleManager {
     public MatchingEngineWorker getMatchingEngineWorker() { return matchingEngineWorker; }
     public ClearingWorker getClearingWorker() { return clearingWorker; }
     public AsyncPersistenceWorker getAsyncPersistenceWorker() { return asyncPersistenceWorker; }
+
+    // ==================== SmartLifecycle 接口实现 ====================
+
+    @Override
+    public int getPhase() {
+        return 0; // 最先启动
+    }
+
+    @Override
+    public boolean isAutoStartup() {
+        return true;
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    @Override
+    public void stop(Runnable callback) {
+        shutdown();
+        running = false;
+        callback.run();
+    }
+
+    @Override
+    public void stop() {
+        shutdown();
+        running = false;
+    }
 }

@@ -57,6 +57,7 @@ public class AccountWorker implements Runnable {
 
     // 状态
     private volatile boolean running = false;
+    private volatile boolean ready = false;
     private volatile boolean replayMode = false;
     private volatile TradingPhase currentPhase = TradingPhase.CLOSED;
     private volatile long lastProcessedIndex = -1;
@@ -118,6 +119,7 @@ public class AccountWorker implements Runnable {
     @Override
     public void run() {
         logger.info("AccountWorker thread started");
+        this.ready = true;
 
         while (running) {
             try {
@@ -643,6 +645,8 @@ public class AccountWorker implements Runnable {
     // ==================== Getter ====================
 
     public boolean isRunning() { return running; }
+
+    public boolean isReady() { return ready; }
 
     public TradingPhase getCurrentPhase() { return currentPhase; }
 

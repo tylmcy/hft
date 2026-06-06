@@ -51,6 +51,7 @@ public class ClearingWorker implements Runnable {
 
     // 状态
     private volatile boolean running = false;
+    private volatile boolean ready = false;
     private volatile boolean replayMode = false;
     private volatile long lastProcessedIndex = -1;
 
@@ -120,6 +121,7 @@ public class ClearingWorker implements Runnable {
     @Override
     public void run() {
         logger.info("ClearingWorker thread started");
+        this.ready = true;
 
         while (running) {
             try {
@@ -477,6 +479,8 @@ public class ClearingWorker implements Runnable {
     // ==================== Getter ====================
 
     public boolean isRunning() { return running; }
+
+    public boolean isReady() { return ready; }
 
     public long getLastProcessedIndex() { return lastProcessedIndex; }
 

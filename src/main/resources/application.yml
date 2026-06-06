@@ -30,6 +30,9 @@ spring:
 trading:
   chronicle:
     base-path: ./data/chronicle/
+  startup:
+    recovery-timeout-ms: 60000
+    worker-ready-timeout-ms: 60000
   h2:
     database-path: ./data/h2/trading
   snapshot:

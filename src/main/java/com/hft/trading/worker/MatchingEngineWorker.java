@@ -52,6 +52,7 @@ public class MatchingEngineWorker implements Runnable {
 
     // 状态
     private volatile boolean running = false;
+    private volatile boolean ready = false;
     private volatile boolean replayMode = false;
     private volatile long lastProcessedIndex = -1;
 
@@ -104,6 +105,7 @@ public class MatchingEngineWorker implements Runnable {
     @Override
     public void run() {
         logger.info("MatchingEngineWorker thread started");
+        this.ready = true;
 
         while (running) {
             try {
@@ -483,6 +485,8 @@ public class MatchingEngineWorker implements Runnable {
     // ==================== Getter ====================
 
     public boolean isRunning() { return running; }
+
+    public boolean isReady() { return ready; }
 
     public long getLastProcessedIndex() { return lastProcessedIndex; }
 
