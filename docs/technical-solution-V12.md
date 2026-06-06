@@ -1,8 +1,8 @@
 # A股交易系统技术方案 V12
 
-> 版本: v12.2 | 日期: 2026-06-03 | 架构师: Trading System Architect
+> 版本: v12.4 | 日期: 2026-06-04 | 架构师: Trading System Architect
 > 状态: **设计完成，可落地开发**
-> 前身: V11.10（两轮审查72问题）→ V12.0（修复14问题）→ V12.1（落地前P0审查修复4项）
+> 前身: V11.10（两轮审查72问题）→ V12.0（修复14问题）→ V12.1（落地前P0审查修复4项）→ V12.2 → V12.3（多维度审查修复40项：7 P0 + 15 P1 + 18 P2）→ **V12.4（审查修复18项）**
 
 ---
 
@@ -12,8 +12,8 @@
 
 | 要点 | 说明 |
 |------|------|
-| **RPO = 0** | 所有CQ同步刷盘（writeMode=SYNC），快照原子写入（tmp→rename），MD5校验，独立快照+增量恢复 |
-| **不重复处理** | 三层幂等模型：HTTP层（idempotencyKey）→ MatchingEngine（processed_order_ids）→ AccountWorker（processed_trade_ids 兜底） |
+| **RPO = 0** | 所有CQ同步刷盘（writeMode=SYNC），account_output CQ为ASYNC（非RPO关键），快照原子写入（tmp→rename），MD5校验，独立快照+增量恢复，tmp残留文件检测 |
+| **不重复处理** | 三层幂等模型：HTTP层（idempotencyKey）→ MatchingEngine（processed_order_ids）→ AccountWorker（processed_trade_ids 兜底）；ClearingWorker恢复时增加TRADE幂等检查；恢复期间幂等集合动态扩容 |
 | **单线程串行** | AccountWorker / MatchingEngine / ClearingWorker 各单线程，内存操作无需加锁 |
 | **数据存储** | JVM内存为主存储（ConcurrentHashMap），Chronicle Map仅用于快照持久化 |
 | **批量处理** | AccountWorker批量50条，ClearingWorker批量100条 |
@@ -39,7 +39,10 @@
 | WS_HEARTBEAT_MS | 30000 | WebSocket心跳间隔（30秒） |
 | ORDER_TPS_LIMIT | 100 | 下单TPS限制 |
 | QUERY_QPS_LIMIT | 1000 | 查询QPS限制 |
-| IDEMPOTENT_SET_MAX_SIZE | 10000 | 幂等集合内存最大容量 |
+| IDEMPOTENT_SET_MAX_SIZE | 10000 | 幂等集合内存最大容量（正常模式）；恢复模式动态扩容至实际需要大小 |
+| SNAPSHOT_FORCE_TIMEOUT_MS | 30000 | 强制快照超时（毫秒） |
+| MAX_RETRY_COUNT | 3 | CQ写入失败最大重试次数 |
+| ARCHIVE_RETENTION_DAYS | 30 | CQ归档保留天数 |
 
 ---
 
@@ -108,16 +111,17 @@
 | **Java版本** | Java 21 LTS |
 | **Spring Boot** | 3.x + 虚拟线程（Project Loom） |
 | **Chronicle版本** | 最新稳定版 |
-| **服务器配置** | 阿里云 8核CPU / 16GB内存 / 500GB SSD |
+| **服务器配置** | 阿里云 8核CPU / 24GB内存 / 500GB NVMe SSD |
+| **SSD要求** | NVMe SSD，支持 ≥ 300K fsync/s（4个SYNC CQ同时写入场景） |
 | **GC策略** | ZGC（Generational），暂停时间 < 1ms |
 
 ### 1.5 设计原则
 
 | 原则 | 说明 |
 |------|------|
-| **RPO = 0** | 所有状态变更通过CQ持久化，快照+增量恢复，重启后数据零丢失 |
+| **RPO = 0** | 所有RPO关键CQ通过SYNC持久化（account_output为ASYNC），快照+增量恢复，重启后数据零丢失 |
 | **数据一致性优先** | 单线程串行处理，保证账户/持仓不变式始终成立 |
-| **不重复处理** | 三层幂等模型：HTTP idempotencyKey → MatchingEngine processed_order_ids → AccountWorker processed_trade_ids兜底 |
+| **不重复处理** | 三层幂等模型：HTTP idempotencyKey → MatchingEngine processed_order_ids → AccountWorker processed_trade_ids兜底；ClearingWorker恢复时TRADE幂等检查 |
 | **简单可靠** | 无锁设计，避免并发复杂度；不引入分布式协调 |
 
 ---
@@ -245,7 +249,7 @@ SnapshotWorker → SNAPSHOT事件写入account_input/matching_input CQ → Worke
 | **LifecycleManager** | 系统级状态管理，恢复协调，启停控制 | 主线程 | volatile |
 | **AsyncPersistence** | 成交/订单异步写入H2 | 1线程 | 读CQ，写H2 |
 
-**线程数汇总**：HTTP虚拟线程(无限) + WebSocket(8) + AccountWorker(1) + MatchingEngine(1) + ClearingWorker(1) + SnapshotWorker(1) + PhaseManager(1) + RiskMonitor(1) + AsyncPersistence(1) = **16+**
+**线程数汇总**：HTTP虚拟线程(无限) + WebSocket(8) + AccountWorker(1) + MatchingEngine(1) + ClearingWorker(1) + SnapshotWorker(1) + PhaseManager(1) + RiskMonitor(1) + LifecycleManager(1) + AsyncPersistence(1) = **15+**
 
 ---
 
@@ -264,7 +268,7 @@ SnapshotWorker → SNAPSHOT事件写入account_input/matching_input CQ → Worke
 | frozen | long | 冻结资金（分） |
 | marginFrozen | long | 保证金占用（分），期货/期权专用 |
 | orderFrozen | long | 委托冻结（分） |
-| debt | long | 负债/穿仓金额（分） |
+| debt | long | 负债/穿仓金额（分），期货/期权专用，首版不使用，初始化为0 |
 | unrealizedPnl | long | 未实现盈亏（分） |
 | riskRatio | double | 风险比率（期货/期权账户） |
 | status | enum | ACTIVE / SUSPENDED / LIQUIDATING / NEGATIVE_BALANCE / CLOSED |
@@ -300,15 +304,17 @@ SnapshotWorker → SNAPSHOT事件写入account_input/matching_input CQ → Worke
 | orderType | enum | LIMIT / MARKET / FAK / FOK |
 | price | long | 价格（分），市价单为0 |
 | quantity | long | 原始数量 |
-| filledQuantity | long | 已成交数量 |
-| remainingQty | long | 剩余数量 |
-| frozenAmount | long | 冻结金额（分），买单专用；卖单冻结的是持仓(不冻资金) |
+| filledQuantity | volatile long | 已成交数量 |
+| remainingQty | volatile long | 剩余数量 |
+| frozenAmount | volatile long | 冻结金额（分），买单专用；卖单冻结的是持仓(不冻资金) |
 | maxPrice | long | 市价买单最大价格限制（涨停价） |
 | minPrice | long | 市价卖单最小价格限制（跌停价） |
 | accountId | long | 账户ID |
 | userId | long | 用户ID |
 | status | volatile enum | PENDING / NEW / PARTIAL_FILLED / FILLED / CANCELLED / REJECTED（volatile保证跨线程可见性） |
-| cancelReason | String | 撤销原因 |
+
+**注**：`PENDING_CANCEL`仅为HTTP撤单响应状态，不是订单状态机成员。订单在撤单完成前保持当前状态（PENDING/NEW/PARTIAL_FILLED）。HTTP返回PENDING_CANCEL表示撤单请求已接受并进入处理流程。
+| cancelReason | enum | FOK_NOT_FILLABLE / FAK_REMAINING_CANCELLED / EOD_CANCEL / INSUFFICIENT_BALANCE / ORDER_NOT_FOUND / ORDER_ALREADY_FILLED / ORDER_ALREADY_CANCELLED / PENDING_ORDER_NOT_IN_ORDERBOOK |
 | idempotencyKey | String | 幂等键 |
 | createTime | long | 创建时间戳 |
 | updateTime | long | 更新时间戳 |
@@ -377,6 +383,9 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | getAccount | 根据accountId获取 | 不存在返回null |
 | freeze | 冻结资金：扣减available，增加frozen和orderFrozen | 2004(不存在)/2003(状态异常)/2001(余额不足) |
 | unfreeze | 解冻资金：减少frozen和orderFrozen，增加available | 静默处理 |
+| settleBuy | 买方结算原子操作：frozen -= frozenAmountUsed, orderFrozen -= frozenAmountUsed, balance -= totalDeduction, available += refund | 验证不变式 |
+| settleSell | 卖方结算：balance += netIncome, available += netIncome | 验证不变式 |
+| deposit | 入金：balance += amount, available += amount | - |
 | writeToChronicleMap | 快照时写入CM | - |
 | loadFromChronicleMap | 恢复时从CM加载 | - |
 
@@ -391,11 +400,16 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | getPosition | 根据accountId和symbol获取 | 不存在返回null |
 | freezePosition | 冻结持仓：扣减available，增加frozen | 2002(持仓不足) |
 | unfreezePosition | 解冻持仓 | 静默处理 |
+| settleBuyPosition | 买方结算：quantity += qty, t1Locked += qty（不存在则新建） | 验证不变式 |
+| settleSellPosition | 卖方结算：frozen -= qty, quantity -= qty | 验证不变式，qty==0时检查移除 |
+| unlockT1 | SOD T+1解锁：available += t1Locked, t1Locked = 0 | 验证不变式 |
 | addPosition | 新建持仓（买入成交时） | - |
 | writeToChronicleMap | 快照时写入CM | - |
 | loadFromChronicleMap | 恢复时从CM加载 | - |
 
 **不变式验证**：每次操作后验证 `|quantity| = available + frozen + t1Locked`。
+
+**unrealizedPnl计算策略**：服务端不主动维护unrealizedPnl字段。前端基于WebSocket market_snapshot推送的最新成交价，在客户端实时计算：unrealizedPnl = (currentPrice - avgPrice) × quantity。Account/Position中的unrealizedPnl字段仅在HTTP查询时按需计算（从MatchingEngine获取最新成交价）。
 
 #### 3.2.3 InMemoryOrderStore
 
@@ -428,9 +442,9 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| eventType | enum | NEW_ORDER / CANCEL_ORDER / SETTLEMENT / SNAPSHOT / PHASE_CHANGE / DEPOSIT / INSTRUMENT_INIT |
+| eventType | enum | NEW_ORDER / CANCEL_ORDER / SNAPSHOT / PHASE_CHANGE / DEPOSIT / INSTRUMENT_INIT |
 | orderId | long | 订单ID |
-| accountId | long | 账户ID |
+| accountId | long | 账户ID（DEPOSIT事件从userId查找填充） |
 | userId | long | 用户ID |
 | symbol | String | 证券代码 |
 | side | enum | BUY / SELL |
@@ -438,16 +452,19 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | price | long | 价格（分） |
 | quantity | long | 数量 |
 | frozenAmount | long | 本次冻结金额（分），买单=限价(或涨停价)×数量+预估佣金，卖单=0 |
-| tradeId | String | 成交ID（SETTLEMENT专用） |
-| settlementType | enum | BUYER / SELLER（仅SETTLEMENT事件） |
-| frozenAmountUsed | long | 结算使用的冻结金额/数量（仅SETTLEMENT） |
-| commission | long | 佣金（仅SETTLEMENT） |
 | phase | enum | CONTINUOUS_TRADING / CLOSED（仅PHASE_CHANGE事件，由PhaseManager写入） |
 | isSystemOrder | boolean | 是否系统订单（强平/做市） |
 | systemReason | String | 系统订单原因 |
-| reason | String | 撤单/拒绝原因 |
-| depositAmount | long | 入金金额（仅DEPOSIT事件） |
+| cancelReason | enum | EOD_CANCEL / USER_CANCEL（仅CANCEL_ORDER事件） |
+| depositId | String | 入金/纠正ID（仅DEPOSIT事件） |
+| depositAmount | long | 入金金额（仅DEPOSIT事件，负数为纠正） |
+| isCorrection | boolean | 是否纠正操作（仅DEPOSIT事件） |
+| originalDepositId | String | 纠正对应的原始入金ID（仅DEPOSIT纠正事件） |
+| operatorId | long | 操作管理员ID（仅DEPOSIT事件） |
+| depositReason | String | 入金/纠正原因（仅DEPOSIT事件） |
 | idempotencyKey | String | 幂等键 |
+| maxPrice | long | 市价买单最大价格限制（涨停价），限价单为0 |
+| minPrice | long | 市价卖单最小价格限制（跌停价），限价单为0 |
 | timestamp | long | 时间戳 |
 | cqIndex | long | CQ写入位置（SNAPSHOT专用） |
 | instrumentData | Instrument | Instrument数据（仅INSTRUMENT_INIT事件） |
@@ -456,10 +473,9 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 |---------|------|------|
 | NEW_ORDER | HTTP线程 | 下单请求 |
 | CANCEL_ORDER | HTTP线程 / EOD | 撤单请求 |
-| SETTLEMENT | AccountWorker（读account_settlement CQ） | 结算请求 |
 | SNAPSHOT | SnapshotWorker | 触发快照 |
 | PHASE_CHANGE | PhaseManager | 交易时段切换（仅CONTINUOUS_TRADING/CLOSED） |
-| DEPOSIT | 管理员HTTP | 入金请求 |
+| DEPOSIT | 管理员HTTP | 入金请求（含纠正） |
 | INSTRUMENT_INIT | SOD流程 | Instrument数据初始化 |
 
 **INSTRUMENT_INIT 事件**携带：symbol, symbolCode, type, name, prevClose, limitUpRatio, limitDownRatio, lotSize, minPriceIncrement, commissionRate, commissionPerLot, stampDutyRate, transferFeeRate。
@@ -493,28 +509,30 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | orderId | long | 订单ID |
 | accountId | long | 账户ID |
 | userId | long | 用户ID |
-| symbol | String | 证券代码 |
-| status | enum | NEW（仅ORDER_UPDATE） |
-| filledQuantity | long | 已成交数量 |
-| remainingQty | long | 剩余数量 |
+| symbol | String | 证券代码（CANCEL_SUCCESS/CANCEL_REJECT必填） |
+| status | enum | ORDER_UPDATE: NEW / FILLED / CANCELLED |
+| filledQuantity | long | 已成交数量（TRADE/CANCEL_SUCCESS填写） |
+| remainingQty | long | 剩余数量（TRADE/CANCEL_SUCCESS填写） |
 | tradeId | String | 成交ID：`takerOrderId_makerOrderId` |
 | takerOrderId | long | 主动方订单ID |
 | makerOrderId | long | 被动方订单ID |
 | price | long | 成交价格 |
 | quantity | long | 成交数量 |
 | orderType | enum | LIMIT / MARKET / FAK / FOK（TRADE专用） |
-| orderPrice | long | 原订单限价（TRADE专用） |
-| frozenAmount | long | 原订单冻结金额（TRADE专用） |
+| orderPrice | long | 原订单限价（TRADE专用，市价单为0） |
+| frozenAmount | long | 原订单冻结金额（TRADE专用，卖方为0） |
+| maxPrice | long | 市价买单最大价格限制（TRADE专用，限价单为0） |
 | orderQuantity | long | 原订单总数量（TRADE专用） |
 | buyAccountId | long | 买方账户ID |
 | sellAccountId | long | 卖方账户ID |
 | buyOrderId | long | 买方订单ID |
 | sellOrderId | long | 卖方订单ID |
-| commissionRate | int | 佣金率（万分比）（TRADE专用） |
-| unfreezeAmount | long | 解冻金额（CANCEL_SUCCESS专用） |
-| unfreezeQty | long | 解冻数量（CANCEL_SUCCESS专用） |
-| side | enum | BUY / SELL |
-| rejectReason | enum | ORDER_NOT_FOUND / ORDER_ALREADY_FILLED / ORDER_ALREADY_CANCELLED / PENDING_ORDER_NOT_IN_ORDERBOOK |
+| commissionRate | int | 佣金率（万分比）（TRADE专用，买卖双方通用） |
+| cancelReason | enum | FOK_NOT_FILLABLE / FAK_REMAINING_CANCELLED / EOD_CANCEL / USER_CANCEL（CANCEL_SUCCESS专用） |
+| unfreezeAmount | long | 解冻金额（CANCEL_SUCCESS/CANCEL_REJECT专用，买方） |
+| unfreezeQty | long | 解冻数量（CANCEL_SUCCESS/CANCEL_REJECT专用，卖方） |
+| side | enum | BUY / SELL（CANCEL_SUCCESS/CANCEL_REJECT必填） |
+| rejectReason | enum | ORDER_NOT_FOUND / ORDER_ALREADY_FILLED / ORDER_ALREADY_CANCELLED / PENDING_ORDER_NOT_IN_ORDERBOOK（CANCEL_REJECT专用） |
 | timestamp | long | 时间戳 |
 
 **TradeId 确定性生成**：`tradeId = takerOrderId_makerOrderId`，保证重复撮合产生相同 tradeId，支持幂等。
@@ -526,14 +544,15 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | eventType | enum | SETTLEMENT / UNFREEZE |
 | orderId | long | 订单ID |
 | accountId | long | 账户ID |
+| userId | long | 用户ID |
 | symbol | String | 证券代码（UNFREEZE必填） |
 | tradeId | String | 成交ID，幂等检查用（SETTLEMENT专用） |
 | settlementType | enum | BUYER / SELLER |
 | price | long | 成交价格 |
 | quantity | long | 成交数量 |
-| frozenAmountUsed | long | 买方=本次使用的冻结金额，卖方=本次使用的冻结持仓数量 |
+| frozenAmountUsed | long | 买方=本次使用的冻结金额（分），卖方=本次成交数量（股，单位不同） |
 | actualAmount | long | 实际扣款金额 = price × quantity |
-| refundAmount | long | 退还差额（买方），= frozenAmountUsed - actualAmount - commission |
+| refundAmount | long | 退还差额（仅买方），= frozenAmountUsed - actualAmount - commission；卖方=0；AccountWorker独立计算退款，此字段仅用于审计 |
 | commission | long | 佣金 |
 | isT1Locked | boolean | 是否T+1锁定（买方true，卖方false） |
 | unfreezeAmount | long | 解冻金额（UNFREEZE专用） |
@@ -541,10 +560,13 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | side | enum | BUY / SELL（UNFREEZE必填） |
 | timestamp | long | 时间戳 |
 
-**frozenAmountUsed 计算规则**：
-- 限价买单：`frozenAmountUsed = ceil(成交金额 × order.frozenAmount / (order.price × order.quantity))`
-- 市价买单：`frozenAmountUsed = ceil(成交金额 × order.frozenAmount / (maxPrice × order.quantity))`（市价单 price=0）
+**frozenAmountUsed 计算规则**（ClearingWorker使用**原始frozenAmount**计算，不使用减少后的值，避免精度损失累积）：
+- ClearingWorker为每个Order维护`originalFrozenAmount`（首次TRADE时记录order.frozenAmount快照）和`originalQuantity`
+- 限价买单：`frozenAmountUsed = ceil(成交金额 × originalFrozenAmount / (order.price × originalQuantity))`
+- 市价买单：`frozenAmountUsed = ceil(成交金额 × originalFrozenAmount / (maxPrice × originalQuantity))`（市价单 price=0）
+- 全部成交(最后一次)：`remainingQty==0 → order.frozenAmount`（使用当前frozenAmount确保精确归零）
 - 卖方：frozenAmountUsed = 成交数量（股）
+- 防护：frozenAmountUsed = min(计算值, order.frozenAmount)，确保不超额扣减
 
 #### 3.3.5 account_output CQ
 
@@ -552,6 +574,12 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 |------|------|------|
 | eventType | enum | FREEZE / UNFREEZE / BALANCE_CHANGE / POSITION_CHANGE |
 | accountId | long | 账户ID |
+| userId | long | 用户ID |
+| orderId | long | 订单ID |
+| tradeId | String | 成交ID（BALANCE_CHANGE/POSITION_CHANGE时为空） |
+| side | enum | BUY / SELL |
+| price | long | 成交价格（分） |
+| quantity | long | 成交数量 |
 | symbol | String | 证券代码 |
 | balanceDelta | long | 余额变动 |
 | availableDelta | long | 可用资金变动 |
@@ -561,7 +589,7 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | positionAvailableDelta | long | 可用持仓变动 |
 | positionFrozenDelta | long | 冻结持仓变动 |
 | t1LockedDelta | long | T+1锁定变动 |
-| reason | String | 变动原因 |
+| reason | enum | ORDER_FREEZE / ORDER_UNFREEZE / TRADE_BUY / TRADE_SELL / DEPOSIT / COMMISSION / LIQUIDATION / T1_UNLOCK |
 | timestamp | long | 时间戳 |
 
 ### 3.4 快照索引文件与恢复逻辑
@@ -578,16 +606,28 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 
 **说明**：AccountWorker快照不保存订单数据。PENDING订单通过 account_input CQ 重放恢复，活跃订单通过 MatchingEngine 快照恢复。
 
+**SNAPSHOT事件批处理行为**：当AccountWorker批量读取发现SNAPSHOT事件时：
+1. 先处理当前批次中SNAPSHOT之前的所有普通事件（含冻结/解冻/结算）
+2. 执行快照，捕获所有已处理事件的效果
+3. SNAPSHOT之后的事件在下一批次处理
+4. 快照的account_input_index记录SNAPSHOT事件本身的CQ索引，快照反映了截至该索引的所有事件效果
+
+MatchingEngine同理：SNAPSHOT前的普通事件先处理，然后执行快照。
+
 **恢复逻辑**：
 
 ```
 1. 查找最新有效快照文件
-   遍历 account_snapshot_*.dat（按index降序）
-   for file in files:
-       计算 MD5 并与 .checksum 比对
-       若一致 → 有效快照
-       若不一致 → 文件损坏，尝试下一个
-   若无有效快照 → 初始化空状态
+   1.1 检测tmp残留文件：
+       for each account_snapshot_*.tmp:
+           对应的.dat不存在 && .tmp.checksum校验通过 → rename为.dat（恢复crash前未完成的快照）
+           .tmp.checksum校验失败 → 删除.tmp和.tmp.checksum
+   1.2 遍历 account_snapshot_*.dat（按index降序）
+       for file in files:
+           计算 MD5 并与 .checksum 比对
+           若一致 → 有效快照
+           若不一致 → 文件损坏，尝试下一个
+       若无有效快照 → 初始化空状态
 
 2. 从 H2 instruments 表加载所有 Instrument 到 InMemoryInstrumentStore
 
@@ -595,32 +635,33 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
    加载 accounts、positions 到 ConcurrentHashMap
    记录 account_input_index、account_settlement_index、matching_input_last_index
 
-4. 生成幂等集合
+4. 生成幂等集合（恢复模式动态扩容：根据CQ事件量调整集合大小，不受IDEMPOTENT_SET_MAX_SIZE限制；恢复正常模式后缩回限制大小）
    processed_order_ids：扫描 matching_input CQ [matching_input_last_index, latest]
-   processed_trade_ids：扫描 account_settlement CQ [0, account_settlement_index]，提取所有 tradeId（兜底防 ClearingWorker 恢复时重复生成 SETTLEMENT）
+   processed_trade_ids：扫描 matching_output CQ [0, matching_output_last_index]，提取所有 TRADE 的 tradeId（MatchingEngine恢复时防重复生成TRADE）
    processed_settlement_ids：扫描 account_settlement CQ [account_settlement_index, latest]，提取所有 tradeId_orderId（防重复结算转账）
    processed_unfreeze_ids：扫描 account_settlement CQ [account_settlement_index, latest]，提取所有 UNFREEZE 事件的 orderId（防重复解冻）
-   说明：processed_trade_ids 按 tradeId 去重（key=tradeId），processed_settlement_ids 按 tradeId+"_"+orderId 去重（key更细粒度），两者协作互补
 
 5. 设置 replay_mode=true
 
 6. 重放 account_input CQ（从 account_input_index+1）
    for event in events:
        if NEW_ORDER:
-           // ⚠️ 始终执行冻结（快照不含这些事件的冻结效果）
+           // ⚠️ 始终执行冻结（重放从快照点之后开始，这些事件的冻结效果尚未反映在快照中）
            freeze(event)
            // ⚠️ 始终重建 Order 对象（快照不保存订单，后续 CANCEL_ORDER 需要）
-           orderStore.addOrder(new Order(event.orderId, event.symbol, PENDING,
-                                         event.side, event.quantity, event.frozenAmount))
+           // 若orderId已在processed_order_ids中，说明MatchingEngine已处理，状态设为NEW
+           OrderStatus initStatus = (orderId in processed_order_ids) ? NEW : PENDING
+           orderStore.addOrder(new Order(event.orderId, event.symbol, initStatus,
+                                         event.side, event.quantity, event.frozenAmount,
+                                         event.maxPrice, event.minPrice))
            write_to_account_output(event)
            // 仅跳过已转发订单的 matching_input 写入
            if !(replay_mode && orderId in processed_order_ids):
                write_to_matching_input(event)
-               if replay_mode: replay_mode = false
 
        if CANCEL_ORDER:
            // 恢复期间统一转发 matching_input 由 MatchingEngine 处理
-           // 无论订单是否存在/什么状态——MatchingEngine 自行判断（在OrderBook则移除，不在则CANCEL_REJECT）
+           // 从InMemoryOrderStore查找symbol/side等信息填入matching_input事件
            write_to_matching_input(event)
            write_to_account_output(event)
 
@@ -647,13 +688,13 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 **恢复逻辑**：
 
 ```
-1. 查找最新有效快照文件（验证MD5 checksum）
+1. 查找最新有效快照文件（验证MD5 checksum，检测tmp残留文件同AccountWorker逻辑）
 
 2. 加载快照到内存
    恢复各 symbol 的 OrderBook（bids + asks）
    记录 matching_input_index、matching_output_last_index
 
-3. 生成幂等集合
+3. 生成幂等集合（恢复模式动态扩容，不受IDEMPOTENT_SET_MAX_SIZE限制）
    existing_trade_ids：扫描 matching_output CQ [0, lastIndex]，提取所有 TRADE 的 tradeId
    existing_cancel_ids：扫描 matching_output CQ [0, lastIndex]，提取所有 CANCEL_SUCCESS/CANCEL_REJECT 的 orderId
 
@@ -665,17 +706,19 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
            读取 InMemoryOrderStore，若 order.status ∈ (CANCELLED, REJECTED) → 跳过
            加入 OrderBook → 撮合 → 生成 TRADE 事件
            若 replay_mode && tradeId in existing_trade_ids: 跳过TRADE写入
-           否则: 写入 matching_output，若 replay_mode: replay_mode=false
+           否则: 写入 matching_output
            写入 ORDER_UPDATE(status=NEW)
 
        if CANCEL_ORDER:
            若 replay_mode && orderId in existing_cancel_ids: 跳过 CANCEL 写入
            否则: 从 OrderBook 移除 → 生成 CANCEL_SUCCESS/CANCEL_REJECT → 写入 matching_output
+
+6. 重放完成后设置 replay_mode=false，缩回幂等集合至IDEMPOTENT_SET_MAX_SIZE限制
 ```
 
 #### 3.4.3 ClearingWorker 恢复
 
-ClearingWorker **不生成快照，不做幂等检查，不使用 replay_mode**。幂等由下游 AccountWorker 处理 SETTLEMENT 时兜底。
+ClearingWorker **不生成快照**。恢复时增加TRADE幂等检查，防止重复生成SETTLEMENT事件。
 
 **恢复逻辑**：
 
@@ -683,13 +726,28 @@ ClearingWorker **不生成快照，不做幂等检查，不使用 replay_mode**�
 1. 读取恢复起始位置（优先级）：
    - 优先：读取 data/snapshots/clearing_position.dat 中的上次处理位置
    - 若文件不存在或损坏：回退到 MatchingEngine 快照的 matching_output_last_index
-2. 重放 matching_output CQ（从该位置+1）
+
+2. 生成已处理TRADE幂等集合（恢复模式动态扩容）：
+   clearing_processed_trade_ids：扫描 account_settlement CQ [0, latest]，提取所有 SETTLEMENT 事件的 tradeId
+   clearing_processed_cancel_ids：扫描 account_settlement CQ [0, latest]，提取所有 UNFREEZE 事件的 orderId
+
+3. 重放 matching_output CQ（从该位置+1）
    for event in events:
-       if TRADE: 直接处理 → 生成 SETTLEMENT → 写入 account_settlement CQ
+       if TRADE:
+           if tradeId in clearing_processed_trade_ids: skip
+           直接处理 → 生成 SETTLEMENT → 写入 account_settlement CQ
+           加入 clearing_processed_trade_ids
        if ORDER_UPDATE(status=NEW): 更新订单 PENDING→NEW
-       if CANCEL_SUCCESS: 生成 UNFREEZE → 写入 account_settlement CQ
+       if CANCEL_SUCCESS:
+           if orderId in clearing_processed_cancel_ids: skip
+           生成 UNFREEZE → 写入 account_settlement CQ
+           加入 clearing_processed_cancel_ids
        if CANCEL_REJECT(PENDING_ORDER_NOT_IN_ORDERBOOK):
-           若订单状态为 PENDING/NEW: 生成 UNFREEZE
+           若订单状态为 PENDING/NEW:
+               if orderId in clearing_processed_cancel_ids: skip
+               生成 UNFREEZE
+
+4. 重放完成后缩回幂等集合至IDEMPOTENT_SET_MAX_SIZE限制
 ```
 
 #### 3.4.4 快照原子写入流程
@@ -700,16 +758,29 @@ ClearingWorker **不生成快照，不做幂等检查，不使用 replay_mode**�
 3. 计算 MD5 → 写入 account_snapshot_{index}.tmp.checksum
 4. 原子重命名：.tmp → .dat，.tmp.checksum → .dat.checksum
 5. 清理旧快照（保留最近3个）
+
+**crash恢复时tmp文件处理**（在3.4.1/3.4.2恢复逻辑步骤1中执行）：
+- 若.tmp存在但.dat不存在 && .tmp.checksum校验通过 → rename为.dat（恢复crash前未完成的快照）
+- 若.tmp.checksum校验失败 → 删除.tmp和.tmp.checksum（写入不完整）
+- 若.tmp和.dat同时存在 → 删除.tmp和.tmp.checksum（rename已完成但.tmp未清理，如系统在rename后crash）
 ```
 
 #### 3.4.5 恢复顺序
 
-| 阶段 | Worker | 快照来源 | 重放CQ |
-|------|--------|---------|--------|
-| 1 | AccountWorker（第一阶段） | account_snapshot | account_input CQ |
-| 2 | MatchingEngine | matching_snapshot | matching_input CQ |
-| 3 | ClearingWorker | clearing_position.dat（回退 matching_output_last_index） | matching_output CQ |
-| 4 | AccountWorker（第二阶段） | - | account_settlement CQ |
+| 阶段 | Worker | 快照来源 | 重放CQ | 说明 |
+|------|--------|---------|--------|------|
+| 1 | AccountWorker（第一阶段） | account_snapshot | account_input CQ | 含tmp残留检测、幂等集动态扩容 |
+| 2 | MatchingEngine | matching_snapshot | matching_input CQ | 含tmp残留检测、幂等集动态扩容 |
+| 3 | ClearingWorker | clearing_position.dat（回退 matching_output_last_index） | matching_output CQ | 含TRADE幂等检查 |
+| 4 | AccountWorker（第二阶段） | - | account_settlement CQ | 含幂等集动态扩容 |
+
+**恢复阶段间依赖保证**：
+- 阶段1→2：AccountWorker重建Order对象后MatchingEngine才能做状态检查
+- 阶段2→3：MatchingEngine恢复OrderBook后ClearingWorker才能正确处理TRADE
+- 阶段3→4：ClearingWorker生成SETTLEMENT后AccountWorker第二阶段才能正确结算
+- 任一阶段失败：记录P0告警，systemStatus=DEGRADED，不继续后续阶段
+
+**replay_mode关闭时机**：各Worker重放CQ到达尾部（`tailer.index() == appender.lastIndex()`）后关闭replay_mode，缩回幂等集合至正常大小。
 
 #### 3.4.6 RPO/RTO 保证
 
@@ -720,7 +791,7 @@ ClearingWorker **不生成快照，不做幂等检查，不使用 replay_mode**�
 | 快照失败 | 0 | ≤5分钟 | CQ仍持久化，回退到上一个有效快照 |
 | CQ文件损坏 | 取决于损坏位置 | 取决于损坏程度 | 从有效快照恢复，损坏段数据可能丢失 |
 
-**RPO=0 关键保证**：writeMode=SYNC + 快照原子rename + MD5校验 + 独立快照回退。
+**RPO=0 关键保证**：writeMode=SYNC（RPO关键CQ）+ 快照原子rename + MD5校验 + 独立快照回退 + tmp残留文件检测 + 幂等集合恢复时动态扩容 + ClearingWorker恢复幂等检查。
 
 ### 3.5 FutureManager
 
@@ -748,11 +819,14 @@ HTTP同步等待机制，ConcurrentHashMap<Long, CompletableFuture<ProcessResult
    - currentPhase == LUNCH_BREAK → 4001
    （简化为：非 CONTINUOUS_TRADING 时根据 phase 返回对应错误码）
 
+2.5 限流检查：当前userId的orderTPS > 100 → 返回1007
+
 3. 参数校验
    - symbol格式、side枚举、orderType枚举
    - LIMIT: price > 0
    - quantity > 0 && quantity % lotSize == 0
    - 涨跌停校验（price不能超出涨停/跌停范围）
+   - HTTP层从InMemoryInstrumentStore（ConcurrentHashMap，线程安全）读取Instrument数据进行lotSize/涨跌停/佣金率校验
 
 4. 生成orderId（雪花算法）
 
@@ -775,14 +849,14 @@ HTTP同步等待机制，ConcurrentHashMap<Long, CompletableFuture<ProcessResult
      - 市价买单：冻结金额 = 涨停价×数量 + 预估佣金，设置maxPrice=涨停价
      - 市价卖单：冻结持仓，不冻结资金，设置minPrice=跌停价
      - 限价买单/FAK/FOK：冻结金额 = price×数量 + 预估佣金
-       预估佣金 = amount × 3 / 10000（无最低限制）
+       预估佣金 = ceil(amount × commissionRate / 10000)（向上取整，保证冻结充足）
   市价买单 amount = 涨停价×数量，限价单 amount = price×数量
      - 买单 → accountStore.freeze()，卖单 → positionStore.freezePosition()
      - 成功 → 生成 matching_input 事件 + account_output 事件
      - 失败 → 状态设为 REJECTED，WebSocket推送拒绝通知
 
 10. 批量写入 matching_input CQ 和 account_output CQ
-    原子性保证：任一下游CQ写入失败 → 回滚本批次所有内存操作 → 返回5001
+    先写入下游CQ，再apply内存修改。若CQ写入失败：丢弃本次修改，CompletableFuture.complete(错误码5001)，重新入队（最多重试3次，超过后P0告警+丢弃，恢复时从CQ重放）。
 
 11. 批量 CompletableFuture.complete()
 ```
@@ -826,12 +900,14 @@ HTTP同步等待机制，ConcurrentHashMap<Long, CompletableFuture<ProcessResult
 | FAK | 限价立即成交能成交的部分 | 剩余立即撤销（CANCEL_SUCCESS） |
 | FOK | 检查对手方符合价格条件的可成交量总和≥quantity则全成交 | 否则全部撤销（CANCEL_SUCCESS） |
 
-**FAK/FOK/MARKET 撤单 unFreezeAmount 计算**：
-- MatchingEngine 自行计算剩余冻结金额（因 TRADE 事件尚未被 ClearingWriter 处理）：
-  `remainingFrozen = order.frozenAmount - Σ(frozenAmountUsed for each TRADE)`
-  `unfreezeAmount = max(0, remainingFrozen)`
-- 买单：unfreezeAmount = remainingFrozen，unfreezeQty = 0
-- 卖单：unfreezeAmount = 0，unfreezeQty = remainingQty
+**FAK/FOK/MARKET 撤单解冻逻辑**：
+- MatchingEngine在CANCEL_SUCCESS中仅发出remainingQty（卖方）或remainingFrozen（买方的剩余冻结金额）
+- 买方remainingFrozen计算：`remainingFrozen = order.frozenAmount - Σ(tradePrice_i × tradeQty_i)`（按成交金额比例估算，不含佣金）
+  - 简化计算：`remainingFrozen = order.frozenAmount × remainingQty / order.quantity`（按数量比例）
+  - 若remainingQty == 0（全部未成交）：`remainingFrozen = order.frozenAmount`
+- 卖方：unfreezeAmount = 0，unfreezeQty = remainingQty
+- AccountWorker处理UNFREEZE时，买单直接解冻order.frozenAmount当前值（已被ClearingWorker为成交部分减少），而非用frozenAmount * remainingQty / quantity公式。卖单解冻order.quantity - order.filledQuantity。此方式自然处理部分成交后的舍入残余。
+- **FAK/FOK CANCEL_SUCCESS + CANCEL_ORDER竞态**：FAK/FOK部分成交后MatchingEngine发出CANCEL_SUCCESS，同时用户可能发出CANCEL_ORDER，导致ClearingWorker生成两条UNFREEZE事件。由processed_unfreeze_ids幂等防护，第二条UNFREEZE被跳过。
 
 ### 4.3 清算流程
 
@@ -851,6 +927,7 @@ HTTP同步等待机制，ConcurrentHashMap<Long, CompletableFuture<ProcessResult
        * 限价单：ceil(成交金额 × order.frozenAmount / (order.price × order.quantity))
        * 市价单：ceil(成交金额 × order.frozenAmount / (maxPrice × order.quantity))
        * 全部成交(最后一次)：remainingQty==0 → order.剩余frozenAmount
+     * 防护：frozenAmountUsed = min(计算值, order.frozenAmount)，确保不超额扣减
      - 计算退款（买方）：refund = frozenAmountUsed - price×quantity - commission
      - 更新 order.frozenAmount -= frozenAmountUsed
      - 生成两条 SETTLEMENT 事件（买方+卖方各一条）→ account_settlement CQ
@@ -883,6 +960,9 @@ HTTP同步等待机制，ConcurrentHashMap<Long, CompletableFuture<ProcessResult
             记录 P0 告警 + 标记账户 SUSPENDED
             不推进 account_settlement CQ 处理位置（恢复时重试）
             continue（跳过本事件）
+        - if frozenAmountUsed > order.frozenAmount:
+            frozenAmountUsed = order.frozenAmount（防护性截断）
+            记录 P0 告警 + 标记账户 SUSPENDED
      4. 原子更新（以下字段在一次操作中完成）：
         - frozen -= frozenAmountUsed
         - orderFrozen -= frozenAmountUsed
@@ -891,6 +971,7 @@ HTTP同步等待机制，ConcurrentHashMap<Long, CompletableFuture<ProcessResult
         - if refund < 0: available -= |refund|（正常场景不应发生，ceil保证refund≥0）
      5. order.frozenAmount -= frozenAmountUsed
      6. 增加/更新持仓：quantity += qty, t1Locked += qty（A股T+1）
+     7. 更新持仓成本价：avgPrice = (old_avgPrice × old_quantity + price × quantity) / new_quantity（整数除法floor）
      7. 验证不变式：balance == available + frozen
 
      【卖方结算】
@@ -951,7 +1032,7 @@ HTTP → account_input CQ (DEPOSIT事件)
 ### 5.1 单线程串行设计
 
 AccountWorker / MatchingEngine / ClearingWorker 各单线程串行处理，访问各自数据无需加锁。
-HTTP线程仅读取内存（通过ConcurrentHashMap），写入仅通过CQ。
+HTTP线程主要读取内存（通过ConcurrentHashMap），唯一写入是orderStore.addOrder()（ConcurrentHashMap.putIfAbsent，线程安全）；其他写入仅通过CQ。
 
 ### 5.2 三层幂等模型
 
@@ -987,7 +1068,7 @@ HTTP线程仅读取内存（通过ConcurrentHashMap），写入仅通过CQ。
 | `processed_unfreeze_ids` | AccountWorker | account_settlement CQ | 最新10,000个 | 防重复解冻 |
 
 **说明**：
-- ClearingWorker **不做幂等检查**（纯转发角色），幂等由 AccountWorker 兜底
+- ClearingWorker 正常运行时不做幂等检查（纯转发角色），恢复时增加TRADE幂等检查（见3.4.3节）；正常模式下幂等由 AccountWorker 兜底
 - `processed_trade_ids` 正常使用10分钟窗口；若恢复时快照距当前>10分钟（深度恢复），读取全量恢复范围
 - 所有幂等集合使用 LinkedHashSet 实现，FIFO 淘汰
 
@@ -1065,6 +1146,7 @@ HTTP线程仅读取内存（通过ConcurrentHashMap），写入仅通过CQ。
 SnapshotWorker 定时流程（每60秒）：
 
 1. 写入 SNAPSHOT 事件到 account_input CQ（记录 cqIndex）
+   说明：SNAPSHOT事件在Worker批处理中的行为——先处理SNAPSHOT之前的同批次普通事件，再执行快照。
 2. 轮询等待 AccountWorker 处理完毕：
    - 检查 account_snapshot_{cqIndex}.dat 存在 + checksum 验证
    - 最长等待 5 秒
@@ -1078,6 +1160,7 @@ SnapshotWorker 定时流程（每60秒）：
    - 第 2 次超时：P1 告警，继续跳过下一周期
    - 第 3 次超时：P0 告警，systemStatus = SNAPSHOTTING（暂停 HTTP，强制快照）
      → 强制快照完成后恢复 systemStatus = RUNNING
+强制快照超时时间：SNAPSHOT_FORCE_TIMEOUT_MS（默认30秒）。若强制快照也超时 → systemStatus=DEGRADED（P0告警），提供管理员API /api/admin/system/force-snapshot-complete 退出SNAPSHOTTING状态。
    - 快照成功后重置计数器为 0
    - 若距上次有效快照 > 5 分钟：触发同步快照
 6. 清理旧快照文件（保留最近 3 个）
@@ -1096,7 +1179,8 @@ SnapshotWorker 定时流程（每60秒）：
 
 3. ClearingWorker：
    读取clearing_position.dat → 回退MatchingEngine快照matching_output_last_index
-   → 重放matching_output CQ（不做幂等检查，直接处理）
+   → 生成已处理TRADE幂等集合（clearing_processed_trade_ids + clearing_processed_cancel_ids）
+   → 重放matching_output CQ（TRADE/CANCEL幂等检查，跳过已处理事件）
 
 4. AccountWorker 第二阶段：
    生成幂等集合（processed_trade_ids + processed_settlement_ids + processed_unfreeze_ids）
@@ -1105,7 +1189,7 @@ SnapshotWorker 定时流程（每60秒）：
 
 ### 6.4 RPO/RTO 保证
 
-详见 3.4.6 节。关键保证：所有CQ writeMode=SYNC + 快照原子rename + MD5校验 + 独立快照回退。
+详见 3.4.6 节。关键保证：RPO关键CQ writeMode=SYNC + account_output ASYNC + 快照原子rename + MD5校验 + 独立快照回退 + tmp残留检测 + 幂等集动态扩容 + ClearingWorker恢复幂等检查。
 
 ### 6.5 CQ文件损坏处理
 
@@ -1157,7 +1241,7 @@ SnapshotWorker 定时流程（每60秒）：
 
 ## 8. API设计
 
-**重要约定**：所有 API 请求和响应的 JSON 字段值均为 **STRING** 类型。
+**重要约定**：所有 API 请求和响应的 JSON 字段值均为 **STRING** 类型。**REST API**：所有字段值为STRING类型（防止JS int64精度丢失）。**WebSocket**：int64字段（orderId/accountId/balance等）为STRING，其他数值字段用原生JSON数值（提高序列化效率）。
 
 ### 8.1 REST API 总览
 
@@ -1166,18 +1250,31 @@ SnapshotWorker 定时流程（每60秒）：
 | 认证 | /api/auth/login | POST | 用户登录 |
 | 认证 | /api/auth/logout | POST | 用户登出 |
 | 认证 | /api/auth/refresh | POST | 刷新令牌 |
+| 认证 | /api/auth/register | POST | 用户注册（自动创建账户，余额为0） |
 | 账户 | /api/account/info | GET | 账户信息 |
 | 账户 | /api/account/positions | GET | 持仓列表 |
 | 订单 | /api/orders | POST | 下单（同步返回orderId，异步成交） |
 | 订单 | /api/orders/{orderId} | DELETE | 撤单（异步） |
 | 订单 | /api/orders/active | GET | 当前委托 |
+| 订单 | /api/orders/{orderId} | GET | 单个订单详情 |
 | 历史 | /api/trades | GET | 历史成交 |
 | 历史 | /api/account/cashflow | GET | 资金流水 |
+| 历史 | /api/orders/history | GET | 历史订单（分页） |
 | 行情 | /api/market/symbols | GET | 股票列表 |
 | 行情 | /api/market/watchlist | GET/POST/DELETE | 自选股管理 |
+| 行情 | /api/market/kline | GET | K线历史数据 |
 | 管理 | /api/admin/deposit | POST | 管理员入金 |
+| 管理 | /api/admin/deposit/correction | POST | 入金纠正（负数扣回） |
+| 管理 | /api/admin/deposits | GET | 入金历史查询 |
+| 管理 | /api/admin/instruments | POST | 添加/更新合约 |
 | 管理 | /api/admin/system/recover | POST | 从DEGRADED恢复RUNNING |
 | 管理 | /api/admin/account/{id}/recover | POST | 恢复SUSPENDED账户 |
+| 管理 | /api/admin/system/status | GET | 系统状态查询 |
+
+**权限说明**：
+- `/api/admin/*`接口需要JWT中role=ADMIN，否则返回错误码1009（权限不足）
+- users表role枚举值：ADMIN（管理员）、TRADER（普通交易员）
+- Spring Security配置：`/api/admin/*`需要ADMIN role；其他API需要认证（任意role）
 
 ### 8.2 HTTP API 详细定义
 
@@ -1212,6 +1309,8 @@ SnapshotWorker 定时流程（每60秒）：
 
 撤单结果通过 WebSocket `order_update` 推送（status=CANCELLED 或 CANCEL_REJECTED）。
 
+**所有权验证**：所有订单操作（下单、撤单、查看订单详情）必须验证JWT提取的userId是否与order.userId匹配。不匹配时返回错误码3004。
+
 **GET /api/account/info**
 
 ```json
@@ -1236,7 +1335,53 @@ SnapshotWorker 定时流程（每60秒）：
   "timestamp": "1716460800000", "traceId": "trace-uuid" }
 ```
 
+**POST /api/admin/deposit/correction 入金纠正**
+
+```json
+// 请求
+{ "depositId": "...", "amount": "-1000000", "reason": "纠正多入金错误" }
+// 响应
+{ "code": "0", "message": "success",
+  "data": { "correctionId": "...", "accountId": "456",
+            "newBalance": "10000000", "newAvailable": "10000000" },
+  "timestamp": "1716460800000", "traceId": "trace-uuid" }
+```
+
+纠正金额为负数，从账户扣回。仅允许纠正当日入金。纠正后写入deposit_history和cashflow_history。
+
+**POST /api/auth/login**
+
+```json
+// 请求: { "username": "trader01", "password": "xxx" }
+// 响应: { "code": "0", "data": { "accessToken": "eyJ...", "refreshToken": "eyJ...", "accessExpireTime": "1716468000000", "refreshExpireTime": "1717072800000", "userId": "123", "accountId": "456", "username": "trader01", "role": "TRADER" } }
+```
+
+**POST /api/auth/register**
+
+```json
+// 请求: { "username": "trader01", "password": "xxx" }
+// 响应: { "code": "0", "data": { "userId": "123", "accountId": "456" } }
+```
+
+**POST /api/auth/refresh**
+
+```json
+// 请求: { "refreshToken": "eyJ..." }
+// 响应: { "code": "0", "data": { "accessToken": "eyJ...", "refreshToken": "eyJ...", "accessExpireTime": "1716468000000", "refreshExpireTime": "1717072800000" } }
+```
+
+**GET /api/orders/history** 参数: symbol?, side?, status?, startDate?, endDate?, page?, pageSize?; 响应: 分页订单列表
+
+**GET /api/market/kline** 参数: symbol, interval(1m/5m/15m/30m/1h/1d), startTime?, endTime?, limit?; 响应: K线数组
+
 **Token刷新规则**：refreshToken一次性使用（并发通过 computeIfAbsent 原子更新），accessToken过渡期仍可用，refreshToken有效期7天。
+
+**历史查询通用参数**：所有历史查询接口支持以下参数：
+- symbol（可选）：筛选指定证券代码
+- startDate（可选）：起始日期，格式YYYYMMDD
+- endDate（可选）：结束日期，格式YYYYMMDD
+- page（可选）：页码，默认1
+- pageSize（可选）：每页条数，默认20，最大100
 
 ### 8.3 WebSocket API
 
@@ -1256,6 +1401,13 @@ SnapshotWorker 定时流程（每60秒）：
 
 **消息类型**：subscribe / unsubscribe / subscribe_confirm / unsubscribe_confirm / ping / pong / error / market_snapshot / orderbook / kline / order_update / trade_update / account_update / position_update。
 
+**error消息格式**：
+```json
+{ "type": "error", "messageId": "uuid-v4", "errorCode": "4003",
+  "message": "品种不存在", "channel": "market_snapshot", "symbols": ["INVALID"] }
+```
+**订阅限制**：单连接最大订阅50个symbol，单连接每秒最多10条subscribe/unsubscribe消息（超出返回error）。
+
 **心跳**：客户端每30秒 ping，服务端响应 pong。90秒未收到 ping → 断开（close code 1001）。
 
 **messageId**：subscribe/unsubscribe/error/confirm 消息携带 messageId（UUID v4），服务端推送消息不需要。
@@ -1268,6 +1420,15 @@ SnapshotWorker 定时流程（每60秒）：
             "quantity": "50", "amount": "52500", "commission": "158",
             "timestamp": "1716460800000" } }
 ```
+
+**推送时机与佣金字段**：trade_update在TRADE事件生成时推送（MatchingEngine线程），此时佣金尚未由ClearingWorker计算。commission字段在TRADE阶段推送时为`"0"`（占位），SETTLEMENT完成后通过`account_update`（type=COMMISSION）补推实际佣金信息。前端应在收到account_update后更新成交记录的佣金显示。
+
+**推送触发点与增量方式**：
+- 买入成交结算后：quantity += qty, t1Locked += qty
+- 卖出成交结算后：quantity -= qty, frozen -= qty
+- 撤单解冻后：frozen -= qty, available += qty
+- T+1解锁后（SOD）：t1Locked = 0, available += t1Locked
+- 推送方式：仅推送变动的持仓（增量），非全量
 
 **reason 枚举**：ORDER_FREEZE / ORDER_UNFREEZE / TRADE_BUY / TRADE_SELL / DEPOSIT / COMMISSION / LIQUIDATION / T1_UNLOCK
 
@@ -1300,6 +1461,21 @@ SnapshotWorker 定时流程（每60秒）：
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### 9.3 组件与状态设计
+
+**组件树**：App > Header > Sidebar + MainContent (TradingViewChart + OrderBookPanel + OrderPanel) + BottomTabs (OrderTable + TradeHistory + Cashflow + PositionManager)
+
+**Zustand Store定义**：
+- useAuthStore: token, userId, role, login(), logout()
+- useMarketStore: symbols[], currentSymbol, marketSnapshots{}, klines{}, subscribe(), unsubscribe()
+- useOrderStore: activeOrders[], submitOrder(), cancelOrder()
+- useAccountStore: accountInfo, positions[], cashflow[]
+- usePositionStore: positions[], updateOnPriceChange()（接收market_snapshot时计算unrealizedPnl）
+
+**实时P&L计算**：WebSocket market_snapshot推送currentPrice → usePositionStore.updateOnPriceChange() 计算 unrealizedPnl = (currentPrice - avgPrice) × quantity
+
+**错误处理策略**：WebSocket断线自动重连（3秒间隔，最多5次），HTTP请求失败重试1次，错误码映射到用户提示。
+
 ---
 
 ## 10. 性能分析
@@ -1319,7 +1495,7 @@ AccountWorker单次操作：CQ读取~5μs + 内存更新~0.5μs + CQ写入~5μs 
 | AccountWorker | 65K TPS | 100K+ TPS | 内存为主 |
 | MatchingEngine | 65K TPS | 100K+ TPS | OrderBook撮合 |
 | ClearingWorker | 50K TPS | 80K+ TPS | 成交×2 SETTLEMENT事件 |
-| **系统整体** | 40-50K TPS | **100K TPS** | ClearingWorker为瓶颈 |
+| **系统整体** | 40-50K TPS | **100K TPS（峰值）/ 80K TPS（持续）** | ClearingWorker为瓶颈（持续负载下约80K，峰值可达100K） |
 
 **注**：以上分析基于纯内存/CPU处理延迟。实际吞吐受 CQ SYNC 模式磁盘 fsync 性能约束，需在目标 SSD 上进行基准测试验证。若 SYNC 成为瓶颈，account_output CQ（仅 WebSocket 推送用途）可降级为非 SYNC 模式（不影响 RPO=0）。
 
@@ -1342,18 +1518,22 @@ AccountWorker单次操作：CQ读取~5μs + 内存更新~0.5μs + CQ写入~5μs 
 
 ### 10.5 内存使用
 
-| 组件 | 预估内存 |
-|------|---------|
-| Chronicle Map快照 | 2-4GB |
-| 内存OrderBook | 500MB-1GB |
-| JVM堆 | 4-6GB |
-| CQ缓冲 | 1-2GB |
-| 幂等集合 | ~1MB |
-| **总计** | **8-12GB** |
+| 组件 | 预估内存(Heap) | 预估内存(Off-heap) |
+|------|---------------|-------------------|
+| JVM堆(InMemoryStore+幂等集合等) | 4-6GB | - |
+| Chronicle Map快照 | - | 2-4GB |
+| 内存OrderBook | 500MB-1GB | - |
+| CQ缓冲 | - | 1-2GB |
+| 幂等集合 | ~1MB | - |
+| **Heap总计** | **5-7GB** | - |
+| **Off-heap总计** | - | **3-6GB** |
+| **总计** | **8-13GB** | - |
+
+注：JVM堆配置10GB（ZGC 70%利用率下可用7GB，匹配5-7GB使用量），留14GB给off-heap（CM快照2-4GB + CQ缓冲1-2GB + Netty direct buffer 1-2GB + OS/H2 1-2GB）。添加-XX:MaxDirectMemorySize=2g限制Netty off-heap使用。
 
 ### 10.6 GC影响
 
-ZGC（Generational）：暂停<1ms，对P99延迟可忽略。堆内存45%触发GC。
+ZGC（Generational）：暂停<1ms，对P99延迟可忽略。ZGC为分配驱动GC，非IHOP触发。使用SoftMaxHeapSize控制堆使用上限，超过时主动触发GC。
 
 ---
 
@@ -1362,8 +1542,10 @@ ZGC（Generational）：暂停<1ms，对P99延迟可忽略。堆内存45%触发G
 ### 11.1 JVM参数
 
 ```bash
-java -Xms12g -Xmx12g -XX:+UseZGC -XX:MaxGCPauseMillis=1 \
-     -XX:+UseStringDeduplication -XX:InitiatingHeapOccupancyPercent=45 \
+java -Xms10g -Xmx10g -XX:+UseZGC -XX:+ZGenerational \
+     -XX:SoftMaxHeapSize=8g -XX:ZAllocationSpikeTolerance=2 \
+     -XX:+UseStringDeduplication -XX:+AlwaysPreTouch \
+     -XX:MaxDirectMemorySize=2g \
      -jar hft-trading.jar
 ```
 
@@ -1383,6 +1565,8 @@ trading:
   batch.size: 50
   clearing.batch-size: 100
   batch.timeout-ms: 1
+  idempotent-set-max-size: 10000
+  max-replay-trade-ids: 10000
   future.timeout-ms: 5000
   jwt.access-token-expiration: 7200000
   jwt.refresh-token-expiration: 604800000
@@ -1397,12 +1581,12 @@ trading:
 | CQ名称 | blockSize | rollCycle | writeMode | 说明 |
 |--------|-----------|-----------|-----------|------|
 | account_input | 128MB | HOURLY | SYNC | 事件量大 |
-| account_output | 64MB | HOURLY | SYNC | - |
+| account_output | 64MB | HOURLY | ASYNC | 非RPO关键，仅WebSocket推送 |
 | matching_input | 64MB | HOURLY | SYNC | - |
 | matching_output | 64MB | HOURLY | SYNC | - |
 | account_settlement | 64MB | HOURLY | SYNC | - |
 
-**RPO=0 关键配置**：writeMode=SYNC（每条消息刷盘）+ epochOnRoll=true + sparseFile=false。
+**RPO=0 关键配置**：RPO关键CQ使用writeMode=SYNC（每条消息刷盘）+ epochOnRoll=true + sparseFile=false。account_output CQ使用ASYNC（不参与恢复，非RPO关键）。CQ roll周期错开避免同时roll：account_input整点，matching_input:15分，matching_output:30分，account_settlement:45分。
 
 ### 11.4 目录结构
 
@@ -1434,15 +1618,23 @@ data/
 
 ### 11.6 关键指标
 
-| 指标 | 告警阈值 |
-|------|---------|
-| CQ队列深度 | > 200 |
-| HTTP等待超时率 | > 0.01% |
-| AccountWorker延迟P99 | > 5ms |
-| MatchingEngine延迟P99 | > 10ms |
-| ClearingWorker延迟P99 | > 10ms |
-| 快照耗时 | > 5s |
-| 连续快照超时 | ≥ 3次（P0） |
+| 指标 | 告警阈值 | 时间窗口 | 级别 |
+|------|---------|---------|------|
+| JVM heap usage | > 75% of Xmx | 30s | P1 |
+| JVM heap usage | > 85% of Xmx | 10s | P0 |
+| GC pause duration | > 5ms 单次 | - | P1 |
+| Off-heap memory | > 12GB | 30s | P1 |
+| Disk free space | < 100GB | 30s | P0 |
+| Disk free space | < 200GB | 30s | P1 |
+| CQ队列深度 | > 50 | 5s持续 | P1 |
+| CQ队列深度 | > 200 | 即时 | P0 |
+| HTTP等待超时率 | > 0.01% | 10s窗口 | P1 |
+| AccountWorker延迟P99 | > 5ms | 10s窗口 | P1 |
+| MatchingEngine延迟P99 | > 10ms | 10s窗口 | P1 |
+| ClearingWorker延迟P99 | > 10ms | 10s窗口 | P1 |
+| 快照耗时 | > 5s | 每次快照 | P1 |
+| 连续快照超时 | ≥ 3次 | 累计 | P0 |
+| AsyncPersistence lag | > 10s落后 | 30s | P1 |
 
 ### 11.7 日志规范
 
@@ -1470,13 +1662,17 @@ data/
 | 1006 | Token已失效 | refreshToken已使用/撤销 |
 | 1007 | 请求过于频繁 | 触发限流 |
 | 1008 | 服务繁忙 | 负载过高 |
+| 1009 | 权限不足 | 非管理员访问ADMIN接口 |
 | 2001 | 余额不足 | available < 冻结金额 |
 | 2002 | 持仓不足 | position.available < 卖出数量 |
 | 2003 | 账户状态异常 | SUSPENDED/LIQUIDATING |
 | 2004 | 账户不存在 | accountId无效 |
+| 2005 | 入金纠正失败 | depositId不存在/非当日/金额超限 |
+| 2006 | 账户余额为负 | balance < 0 |
 | 3001 | 订单不存在 | orderId无效 |
 | 3002 | 订单状态不允许 | 已撤销/已成交重复撤销 |
 | 3003 | 订单不存在于订单簿 | OrderBook无此订单 |
+| 3004 | 无权操作此订单 | 请求userId与订单userId不匹配 |
 | 4001 | 交易阶段不允许 | 非连续竞价下单 |
 | 4002 | 涨跌停限制 | 价格超范围 |
 | 4003 | 品种不存在 | symbol无效 |
@@ -1506,12 +1702,12 @@ data/
 
 ### 13.2 自成交预防
 
-HTTP下单前校验：检查同一账户是否存在对手方订单且价格交叉 → 拒绝（4004）。撮合引擎不校验自成交。
+HTTP下单前校验：检查同一账户是否存在对手方订单且价格交叉 → 拒绝（4004）。撮合引擎不校验自成交（已知设计权衡：HTTP层检查与撮合之间存在毫秒级竞争窗口，概率极低。如需严格防自成交，MatchingEngine需增加同一accountId的买卖订单交叉检查）。
 
 ### 13.3 T+1规则
 
 - 买入成交：pos.t1Locked += quantity
-- 次日 SOD：pos.available += pos.t1Locked，pos.t1Locked = 0
+- 次日 SOD：pos.available += pos.t1Locked，pos.t1Locked = 0。异常处理：若t1Locked > |quantity|，P0告警 + 标记账户SUSPENDED + 修正t1Locked = |quantity| - available - frozen
 - EOD 无需额外处理
 
 ### 13.4 佣金计算
@@ -1522,10 +1718,10 @@ HTTP下单前校验：检查同一账户是否存在对手方订单且价格交�
 | 期货 | comm = commissionPerLot × lots | - |
 
 - 无最低佣金限制
-- 每次成交独立计算，部分成交累计佣金可能略高于一次性成交
+- 每次成交独立计算，部分成交累计佣金等于或低于一次性成交佣金（floor具有亚可加性：floor(a)+floor(b) ≤ floor(a+b)），差异可忽略
 - 佣金在结算时从成交金额中扣除
 - 买方冻结时预估佣金同公式，清算时按实际成交金额重新计算
-- frozenAmountUsed 用 ceil（向上取整保护买方），commission 用 floor（向下取整保护客户）
+- 买方冻结预估佣金使用 ceil（向上取整，保证冻结金额覆盖实际结算成本），实际佣金用 floor（向下取整保护客户）。冻结时 ceil + 结算时 floor 保证 refund ≥ 0（数学证明：对任意x，ceil(x) ≥ floor(x)，冻结佣金≥结算佣金；结合ceil按比例分配，frozenAmountUsed ≥ tradeAmount + floor(settlementCommission)）。
 
 ### 13.5 风控与强平
 
@@ -1571,14 +1767,27 @@ HTTP下单前校验：检查同一账户是否存在对手方订单且价格交�
 
 2. 新交易日启动
    2.1 加载上一交易日最终快照（accounts, positions）
-   2.2 T+1 解锁：unlockT1Positions()
-   2.3 从H2加载Instrument → 写入INSTRUMENT_INIT到account_input和matching_input CQ
-   2.4 清空订单簿和订单（上一日订单已在EOD撤销）
-   2.5 清空幂等集合
-   2.6 启动Worker线程，PhaseManager.waitForMarketOpen()
+   2.2 孤立冻结检测与修复：
+       遍历所有账户和持仓，检测孤立冻结：
+       - 账户：若 orderFrozen > 0 但 InMemoryOrderStore 中无对应活跃订单（PENDING/NEW/PARTIAL_FILLED）
+         → orderFrozen → 0, frozen -= orderFrozen, available += orderFrozen, 记录 P0 告警
+       - 持仓：若 frozen > 0 但无对应活跃卖单
+         → frozen → 0, available += frozen, 记录 P0 告警
+       原因：EOD撤单超时可能导致冻结资金/持仓未解冻，且SOD不重放上一日CQ
+   2.3 T+1 解锁：unlockT1Positions()
+   2.4 从H2加载Instrument → 写入INSTRUMENT_INIT到account_input和matching_input CQ
+   2.5 清空订单簿和订单（上一日订单已在EOD撤销）
+   2.6 清空幂等集合
+   2.7 启动Worker线程，PhaseManager.waitForMarketOpen()
 
 3. 当日重启恢复
    recoverFromSnapshotAndCQ()（见6.3节四阶段恢复）
+   恢复完成后，PhaseManager根据当前系统时间设置交易阶段：
+   - 09:15-09:30 → PRE_MARKET（返回4005）
+   - 09:30-11:30 → CONTINUOUS_TRADING
+   - 11:30-13:00 → LUNCH_BREAK（返回4001）
+   - 13:00-15:00 → CONTINUOUS_TRADING
+   - 其他时段 → CLOSED（返回4001或4005，根据是否交易日判断）
 
 4. 启动时刻边界处理
    - 09:15启动 → CLOSED阶段，错误码4005，等待09:30
@@ -1590,10 +1799,11 @@ HTTP下单前校验：检查同一账户是否存在对手方订单且价格交�
 ### 14.3 EOD流程
 
 ```
-1. PhaseManager 写入 PHASE_CHANGE(CLOSED) → account_input CQ
-2. HTTP 停止接收新订单（返回 4001）
-3. 等待队列清空（最长5秒）
-4. 撤销所有未成交订单（写入 CANCEL_ORDER 到 account_input CQ）
+1. 设置 systemStatus=SHUTTING_DOWN（下单返回4006，撤单正常）
+2. PhaseManager 写入 PHASE_CHANGE(CLOSED) → account_input CQ
+3. 等待现有HTTP请求完成（最长3秒）
+4. 等待队列清空（最长5秒）
+5. 撤销所有未成交订单（遍历InMemoryOrderStore中status∈{PENDING,NEW,PARTIAL_FILLED}，写入CANCEL_ORDER到account_input CQ）
    - 所有 CANCEL_ORDER 统一写入 account_input CQ，由 AccountWorker 转发 matching_input CQ
    - MatchingEngine 处理：在 OrderBook → CANCEL_SUCCESS→UNFREEZE；不在 → CANCEL_REJECT→UNFREEZE
 5. 等待撤单处理完成（轮询模式，每500ms检查，maxWait = max(10s, pendingCount×100ms)）
@@ -1700,7 +1910,7 @@ HTTP下单前校验：检查同一账户是否存在对手方订单且价格交�
 
 ### 15.9 writeMode=SYNC 吞吐量：上线前基准测试
 
-**决策**：所有 CQ 保持 writeMode=SYNC。在目标部署环境（500GB SSD）上进行基准测试，验证 100K TPS 下 SYNC 模式的 fsync 吞吐是否达标。若不达标，优化方向为：(1) 升级 NVMe SSD；(2) 将 account_output CQ（仅用于 WebSocket 推送，非 RPO 关键）降级为非 SYNC 模式。
+**决策**：RPO关键CQ（account_input/matching_input/matching_output/account_settlement）保持writeMode=SYNC。account_output CQ使用ASYNC（不参与恢复，非RPO关键）。SSD要求：NVMe，≥300K fsync/s。CQ roll周期错开避免同时roll。上线前在目标环境基准测试验证100K TPS。
 
 ### 15.10 佣金取整：floor 统一
 
@@ -1718,6 +1928,8 @@ HTTP下单前校验：检查同一账户是否存在对手方订单且价格交�
 | h2.database-path | data/h2/trading | H2数据库路径 |
 | jwt.access-token-expiration | 7200000 | Access Token过期时间（ms） |
 | jwt.refresh-token-expiration | 604800000 | Refresh Token过期时间（ms） |
+| jwt.secret-key | （从环境变量TRADING_JWT_SECRET读取） | JWT签名密钥，不写入配置文件，从环境变量加载 |
+| jwt.secret-key-rotation | 首版使用固定密钥 | 密钥轮换策略：首版固定密钥，后续版本支持旧密钥过渡期验证 |
 | rate-limit.order-tps | 100 | 单用户下单限流 |
 | rate-limit.query-qps | 1000 | 单用户查询限流 |
 | snapshot.interval-ms | 60000 | 快照间隔（ms） |
@@ -1788,19 +2000,39 @@ account_id BIGINT PK | user_id BIGINT FK → users | created_at BIGINT
 
 #### C.6 trades_history（历史成交）
 
-trade_id VARCHAR(50) PK | order_id BIGINT | account_id BIGINT | symbol VARCHAR(10) | side VARCHAR(5) | price BIGINT | quantity BIGINT | amount BIGINT | commission BIGINT | trade_time BIGINT | trade_date VARCHAR(8)
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT AUTO PK | 自增主键 |
+| trade_id | VARCHAR(50) | 成交ID：takerOrderId_makerOrderId |
+| order_id | BIGINT | 订单ID |
+| account_id | BIGINT | 账户ID |
+| user_id | BIGINT | 用户ID |
+| symbol | VARCHAR(10) | 证券代码 |
+| side | VARCHAR(5) | BUY / SELL |
+| order_type | VARCHAR(10) | LIMIT / MARKET / FAK / FOK |
+| price | BIGINT | 成交价格（分） |
+| order_price | BIGINT | 原订单限价（分） |
+| quantity | BIGINT | 成交数量 |
+| amount | BIGINT | 成交金额（分） |
+| commission | BIGINT | 佣金（分） |
+| frozen_amount_used | BIGINT | 本次使用的冻结金额（分） |
+| trade_time | BIGINT | 成交时间戳 |
+| trade_date | VARCHAR(8) | 交易日期 |
 
-索引：(order_id), (account_id, trade_date)
+索引：(trade_id), (order_id), (account_id, trade_date), (symbol, trade_date)
 
 #### C.7 orders_history（历史订单）
 
-order_id BIGINT PK | account_id BIGINT | user_id BIGINT | symbol VARCHAR(10) | side VARCHAR(5) | order_type VARCHAR(10) | price BIGINT | quantity BIGINT | filled_quantity BIGINT | status VARCHAR(20) | commission BIGINT | create_time BIGINT | update_time BIGINT | trade_date VARCHAR(8)
+order_id BIGINT PK | account_id BIGINT | user_id BIGINT | symbol VARCHAR(10) | side VARCHAR(5) | order_type VARCHAR(10) | price BIGINT | quantity BIGINT | filled_quantity BIGINT | status VARCHAR(20) | commission BIGINT | frozen_amount BIGINT | cancel_reason VARCHAR(100) | idempotency_key VARCHAR(50) | create_time BIGINT | update_time BIGINT | trade_date VARCHAR(8)
 
-索引：(account_id, trade_date)
+索引：(account_id, trade_date), (user_id, trade_date), (symbol, trade_date, status)
 
 #### C.8 cashflow_history（资金流水）
 
 id BIGINT AUTO PK | account_id BIGINT | amount BIGINT | type VARCHAR(30) | reason VARCHAR(100) | trade_id VARCHAR(50) | order_id BIGINT | created_at BIGINT
+
+**type枚举值**：DEPOSIT（入金）、TRADE（交易）、COMMISSION（佣金）、FREEZE（冻结）、UNFREEZE（解冻）、T1_UNLOCK（T+1解锁）
+**type与reason的关系**：type为粗分类（用于查询筛选），reason为细描述（用于具体记录）。例如：type=TRADE, reason=TRADE_BUY。
 
 索引：(account_id, created_at)
 
@@ -1816,8 +2048,24 @@ id BIGINT AUTO PK | symbol VARCHAR(10) | interval VARCHAR(5) | open BIGINT | hig
 
 索引：(symbol, interval, trade_date)
 
+#### C.11 deposit_history（入金历史）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| deposit_id | VARCHAR(50) PK | 入金/纠正ID |
+| account_id | BIGINT | 账户ID |
+| amount | BIGINT | 入金金额（负数为纠正） |
+| operator_id | BIGINT | 操作管理员ID |
+| reason | VARCHAR(200) | 入金/纠正原因 |
+| is_correction | BOOLEAN | 是否纠正操作 |
+| original_deposit_id | VARCHAR(50) | 纠正对应的原始入金ID（仅纠正时填写） |
+| status | VARCHAR(20) | SUCCESS / FAILED |
+| created_at | BIGINT | 创建时间戳 |
+
+索引：(account_id, created_at)
+
 ---
 
-> **文档版本**: v12.2 | **创建日期**: 2026-06-03 | **架构师**: Trading System Architect
-> **前身**: V11.10 → V12.0 → V12.1，共计修复90个问题
+> **文档版本**: v12.4 | **创建日期**: 2026-06-04 | **架构师**: Trading System Architect
+> **前身**: V11.10 → V12.0 → V12.1 → V12.2 → V12.3 → V12.4，共计修复148个问题
 > **状态**: 设计完成，可落地开发

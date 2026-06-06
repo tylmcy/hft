@@ -2,8 +2,10 @@ package com.hft.trading.snapshot;
 
 import com.hft.trading.model.Account;
 import com.hft.trading.model.Position;
+import com.hft.trading.service.AlertService;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryPositionStore;
+import com.hft.trading.util.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,8 +34,9 @@ class AccountSnapshotWriterTest {
 
     @BeforeEach
     void setUp() {
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService);
+        positionStore = new InMemoryPositionStore(alertService);
         writer = new AccountSnapshotWriter(accountStore, positionStore, tempDir.toString() + "/");
     }
 

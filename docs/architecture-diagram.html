@@ -1,374 +1,596 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A股交易系统 Architecture Diagram V9</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    .header { margin-bottom: 2rem; }
-    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
-    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
-    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
-    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
-    svg { width: 100%; min-width: 1100px; display: block; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
-    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
-    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
-    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .card-dot.cyan { background: #22d3ee; }
-    .card-dot.emerald { background: #34d399; }
-    .card-dot.violet { background: #a78bfa; }
-    .card-dot.amber { background: #fbbf24; }
-    .card-dot.rose { background: #fb7185; }
-    .card-dot.orange { background: #fb923c; }
-    .card h3 { font-size: 0.875rem; font-weight: 600; }
-    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
-    .card li { margin-bottom: 0.375rem; }
-    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
-    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
-    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
-    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
-    .toolbar-actions { display: none; gap: 0.5rem; }
-    .toolbar.expanded .toolbar-actions { display: flex; }
-    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
-    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HFT Trading System V12 Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    color: #e2e8f0;
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+  }
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px 24px 48px;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .pulse-dot {
+    width: 10px; height: 10px;
+    background: #34d399;
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.5); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 8px rgba(52,211,153,0); }
+  }
+  .header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #f1f5f9;
+    letter-spacing: -0.5px;
+  }
+  .header .subtitle {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .toolbar-toggle {
+    background: rgba(30,41,59,0.7);
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .toolbar-toggle:hover { background: rgba(51,65,85,0.8); color: #e2e8f0; }
+  .toolbar-actions {
+    display: none;
+    gap: 6px;
+  }
+  .toolbar-actions.visible { display: flex; }
+  .toolbar-actions button {
+    background: rgba(30,41,59,0.7);
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .toolbar-actions button:hover { background: rgba(51,65,85,0.8); color: #e2e8f0; border-color: #64748b; }
+  .diagram-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 16px;
+    padding: 20px;
+    overflow: hidden;
+  }
+  .diagram-card svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  @media (max-width: 900px) {
+    .cards-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 520px) {
+    .cards-grid { grid-template-columns: 1fr; }
+  }
+  .card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .card-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .card-dot.cyan { background: #22d3ee; }
+  .card-dot.emerald { background: #34d399; }
+  .card-dot.violet { background: #a78bfa; }
+  .card-dot.amber { background: #fbbf24; }
+  .card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+  .card ul {
+    list-style: none;
+    font-size: 11px;
+    line-height: 1.8;
+    color: #94a3b8;
+  }
+  .card ul li::before {
+    content: '\2192  ';
+    color: #475569;
+  }
+  .card ul li strong {
+    color: #cbd5e1;
+  }
+  .footer {
+    margin-top: 32px;
+    text-align: center;
+    font-size: 11px;
+    color: #475569;
+    letter-spacing: 0.5px;
+  }
+  @media print {
+    .toolbar { display: none !important; }
+    .diagram-card { border: none; padding: 0; }
+  }
+</style>
 </head>
 <body>
-  <div class="container" id="report-container">
-    <!-- Header -->
-    <div class="header">
-      <div class="header-row">
-        <div class="pulse-dot"></div>
-        <h1>A股交易系统 Architecture V9</h1>
-        <div class="toolbar">
-          <div class="toolbar-actions">
-            <button onclick="copyAsImage(this)">📋 Copy</button>
-            <button onclick="downloadPNG(this)">🖼️ PNG</button>
-            <button onclick="downloadPDF(this)">📄 PDF</button>
-          </div>
-          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
-        </div>
-      </div>
-      <p class="subtitle">单JVM · 内存主存储 · 批量处理100K TPS · RPO=0 · 快照+CQ增量恢复</p>
-    </div>
-
-    <!-- Main Diagram -->
-    <div class="diagram-container">
-      <svg viewBox="0 0 1150 980">
-        <!-- Definitions -->
-        <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
-          </marker>
-          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
-          </marker>
-          <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
-          </marker>
-          <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
-          </marker>
-          <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#fb923c" />
-          </marker>
-          <marker id="arrowhead-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
-          </marker>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
-          </pattern>
-        </defs>
-
-        <!-- Background Grid -->
-        <rect width="100%" height="100%" fill="url(#grid)" />
-
-        <!-- ===================== ARROWS (drawn first, behind components) ===================== -->
-
-        <!-- 前端 → 接入层 -->
-        <line x1="440" y1="55" x2="440" y2="98" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
-
-        <!-- 接入层 → incoming_event CQ -->
-        <line x1="440" y1="168" x2="440" y2="218" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-
-        <!-- incoming_event CQ → AccountWorker -->
-        <line x1="440" y1="258" x2="440" y2="298" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-
-        <!-- AccountWorker → match_orders CQ -->
-        <line x1="440" y1="398" x2="440" y2="438" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-
-        <!-- match_orders CQ → MatchingEngine -->
-        <line x1="440" y1="478" x2="440" y2="518" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-
-        <!-- MatchingEngine → trade CQ -->
-        <line x1="440" y1="618" x2="440" y2="658" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-
-        <!-- trade CQ → ClearingWorker -->
-        <line x1="440" y1="698" x2="440" y2="738" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-
-        <!-- ClearingWorker → incoming_event CQ (SETTLEMENT/UNFREEZE) -->
-        <path d="M 350 780 Q 280 780 280 340 Q 280 240 350 240" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead-violet)"/>
-        <text x="250" y="500" fill="#a78bfa" font-size="7">SETTLEMENT/UNFREEZE</text>
-
-        <!-- SnapshotWorker → CQs -->
-        <line x1="760" y1="320" x2="760" y2="240" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead-amber)"/>
-        <line x1="760" y1="320" x2="760" y2="460" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead-amber)"/>
-
-        <!-- ===================== 前端 (外部) ===================== -->
-        <rect x="280" y="20" width="320" height="60" rx="6" fill="#0f172a"/>
-        <rect x="280" y="20" width="320" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="440" y="42" fill="white" font-size="12" font-weight="600" text-anchor="middle">前端交易界面</text>
-        <text x="440" y="58" fill="#94a3b8" font-size="9" text-anchor="middle">React 18 + lightweight-charts + Ant Design</text>
-        <text x="440" y="72" fill="#22d3ee" font-size="7" text-anchor="middle">K线图 · 订单簿 · 下单面板 · 持仓管理</text>
-
-        <!-- ===================== 接入层 ===================== -->
-        <rect x="280" y="108" width="320" height="60" rx="6" fill="#0f172a"/>
-        <rect x="280" y="108" width="320" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="440" y="130" fill="white" font-size="12" font-weight="600" text-anchor="middle">接入层 (Tomcat 虚拟线程)</text>
-        <text x="440" y="146" fill="#94a3b8" font-size="9" text-anchor="middle">REST API · WebSocket · Token认证</text>
-        <text x="440" y="160" fill="#34d399" font-size="7" text-anchor="middle">CompletableFuture.await(5s) 同步等待</text>
-
-        <!-- ===================== incoming_event CQ ===================== -->
-        <rect x="280" y="218" width="320" height="40" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1"/>
-        <text x="440" y="242" fill="#fb923c" font-size="10" font-weight="600" text-anchor="middle">incoming_event CQ · NEW_ORDER/CANCEL/UNFREEZE/SETTLEMENT/SNAPSHOT</text>
-
-        <!-- ===================== AccountWorker ===================== -->
-        <rect x="280" y="298" width="320" height="100" rx="6" fill="#0f172a"/>
-        <rect x="280" y="298" width="320" height="100" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="440" y="320" fill="white" font-size="12" font-weight="600" text-anchor="middle">AccountWorker (单线程批量)</text>
-        <text x="440" y="338" fill="#94a3b8" font-size="9" text-anchor="middle">批量读取50事件 → 内存操作 → 批量写入CQ</text>
-        <text x="440" y="355" fill="#34d399" font-size="8" text-anchor="middle">• 冻结/解冻资金持仓 (ConcurrentHashMap)</text>
-        <text x="440" y="370" fill="#34d399" font-size="8" text-anchor="middle">• 结算转账 (内存操作)</text>
-        <text x="440" y="385" fill="#34d399" font-size="8" text-anchor="middle">• 批量 CompletableFuture.complete()</text>
-
-        <!-- ===================== match_orders CQ ===================== -->
-        <rect x="280" y="438" width="320" height="40" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1"/>
-        <text x="440" y="462" fill="#fb923c" font-size="10" font-weight="600" text-anchor="middle">match_orders CQ · 待撮合订单</text>
-
-        <!-- ===================== MatchingEngine ===================== -->
-        <rect x="280" y="518" width="320" height="100" rx="6" fill="#0f172a"/>
-        <rect x="280" y="518" width="320" height="100" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="440" y="540" fill="white" font-size="12" font-weight="600" text-anchor="middle">MatchingEngine (单线程批量)</text>
-        <text x="440" y="558" fill="#94a3b8" font-size="9" text-anchor="middle">批量读取 → 批量撮合 → 批量写入trade CQ</text>
-        <text x="440" y="575" fill="#34d399" font-size="8" text-anchor="middle">• 内存 OrderBook (TreeMap)</text>
-        <text x="440" y="590" fill="#34d399" font-size="8" text-anchor="middle">• 价格优先时间优先</text>
-        <text x="440" y="605" fill="#34d399" font-size="8" text-anchor="middle">• 五档行情推送</text>
-
-        <!-- ===================== trade CQ ===================== -->
-        <rect x="280" y="658" width="320" height="40" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1"/>
-        <text x="440" y="682" fill="#fb923c" font-size="10" font-weight="600" text-anchor="middle">trade CQ · ORDER_UPDATE/TRADE/CANCEL</text>
-
-        <!-- ===================== ClearingWorker ===================== -->
-        <rect x="280" y="738" width="320" height="80" rx="6" fill="#0f172a"/>
-        <rect x="280" y="738" width="320" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="440" y="760" fill="white" font-size="12" font-weight="600" text-anchor="middle">ClearingWorker (单线程批量)</text>
-        <text x="440" y="778" fill="#94a3b8" font-size="9" text-anchor="middle">批量读取 → 批量更新订单状态 → 批量发送事件</text>
-        <text x="440" y="795" fill="#34d399" font-size="8" text-anchor="middle">• ORDER_UPDATE: PENDING→NEW (订单入撮合)</text>
-        <text x="440" y="810" fill="#34d399" font-size="8" text-anchor="middle">• TRADE: 成交清算 (幂等putIfAbsent)</text>
-
-        <!-- ===================== JVM边界 ===================== -->
-        <rect x="170" y="88" width="720" height="750" rx="12" fill="rgba(251, 191, 36, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
-        <text x="182" y="106" fill="#fbbf24" font-size="10" font-weight="600">单JVM进程 · 阿里云 8C16G · ZGC</text>
-
-        <!-- ===================== 内存存储 ===================== -->
-        <rect x="680" y="108" width="180" height="130" rx="6" fill="#0f172a"/>
-        <rect x="680" y="108" width="180" height="130" rx="6" fill="rgba(34, 211, 238, 0.2)" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="770" y="130" fill="white" font-size="11" font-weight="600" text-anchor="middle">内存主存储</text>
-        <text x="770" y="146" fill="#22d3ee" font-size="8" text-anchor="middle">ConcurrentHashMap</text>
-        <text x="695" y="165" fill="#94a3b8" font-size="7">• accounts: Map&lt;Long,Account&gt;</text>
-        <text x="695" y="180" fill="#94a3b8" font-size="7">• positions: Map&lt;Long,Position&gt;</text>
-        <text x="695" y="195" fill="#94a3b8" font-size="7">• orders: Map&lt;Long,Order&gt;</text>
-        <text x="695" y="210" fill="#94a3b8" font-size="7">• orderBooks: Map&lt;String,OrderBook&gt;</text>
-        <text x="770" y="230" fill="#34d399" font-size="7" font-weight="600" text-anchor="middle">✓ 单线程操作，无需锁</text>
-
-        <!-- ===================== SnapshotWorker ===================== -->
-        <rect x="680" y="268" width="180" height="80" rx="6" fill="#0f172a"/>
-        <rect x="680" y="268" width="180" height="80" rx="6" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
-        <text x="770" y="290" fill="white" font-size="11" font-weight="600" text-anchor="middle">SnapshotWorker</text>
-        <text x="770" y="306" fill="#fbbf24" font-size="8" text-anchor="middle">定时写入 SNAPSHOT 事件</text>
-        <text x="770" y="323" fill="#94a3b8" font-size="7" text-anchor="middle">→ incoming_event CQ</text>
-        <text x="770" y="338" fill="#94a3b8" font-size="7" text-anchor="middle">→ match_orders CQ</text>
-
-        <!-- ===================== 快照文件 ===================== -->
-        <rect x="680" y="368" width="180" height="150" rx="6" fill="rgba(76, 29, 149, 0.3)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="770" y="390" fill="white" font-size="11" font-weight="600" text-anchor="middle">快照文件 (Chronicle Map)</text>
-        <text x="695" y="410" fill="#a78bfa" font-size="7">account_snapshot_{cq_idx}.dat</text>
-        <text x="695" y="425" fill="#a78bfa" font-size="7">orderbook_snapshot_{cq_idx}.dat</text>
-        <text x="695" y="440" fill="#a78bfa" font-size="7">clearing_index.dat</text>
-        <text x="770" y="465" fill="#34d399" font-size="7" font-weight="600" text-anchor="middle">SNAPSHOT 事件触发</text>
-        <text x="770" y="480" fill="#34d399" font-size="7" font-weight="600" text-anchor="middle">后续事件下批次处理</text>
-        <text x="770" y="505" fill="#22d3ee" font-size="7" font-weight="600" text-anchor="middle">RPO = 0</text>
-
-        <!-- ===================== H2 Database ===================== -->
-        <rect x="280" y="850" width="320" height="70" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="440" y="872" fill="white" font-size="12" font-weight="600" text-anchor="middle">H2 Database (磁盘模式)</text>
-        <text x="440" y="890" fill="#94a3b8" font-size="9" text-anchor="middle">orders · trades · accounts · positions</text>
-        <text x="440" y="908" fill="#a78bfa" font-size="7" text-anchor="middle">异步批量写入 · 仅历史查询 · 不参与主链路</text>
-
-        <!-- Arrow: ClearingWorker → H2 -->
-        <line x1="440" y1="818" x2="440" y2="848" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-
-        <!-- ===================== LEGEND ===================== -->
-        <text x="50" y="920" fill="white" font-size="10" font-weight="600">Legend</text>
-
-        <rect x="50" y="932" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
-        <text x="72" y="940" fill="#94a3b8" font-size="8">Worker (单线程批量)</text>
-
-        <rect x="200" y="932" width="16" height="10" rx="2" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1"/>
-        <text x="222" y="940" fill="#94a3b8" font-size="8">Chronicle Queue</text>
-
-        <rect x="350" y="932" width="16" height="10" rx="2" fill="rgba(34, 211, 238, 0.2)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="372" y="940" fill="#94a3b8" font-size="8">内存主存储</text>
-
-        <rect x="480" y="932" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.3)" stroke="#a78bfa" stroke-width="1"/>
-        <text x="502" y="940" fill="#94a3b8" font-size="8">快照/数据库</text>
-
-        <!-- ===================== 性能指标 ===================== -->
-        <text x="680" y="560" fill="white" font-size="10" font-weight="600">性能指标</text>
-        <text x="680" y="580" fill="#fbbf24" font-size="8">吞吐量: ≥ 100,000 TPS</text>
-        <text x="680" y="595" fill="#fbbf24" font-size="8">HTTP返回P99: ≤ 5ms</text>
-        <text x="680" y="610" fill="#fbbf24" font-size="8">端到端P99: ≤ 15ms</text>
-        <text x="680" y="625" fill="#fbbf24" font-size="8">批量大小: 50事件/批次</text>
-        <text x="680" y="640" fill="#fbbf24" font-size="8">快照间隔: 60秒</text>
-
-        <!-- ===================== 关键设计 ===================== -->
-        <text x="680" y="680" fill="white" font-size="10" font-weight="600">V9 关键设计</text>
-        <text x="680" y="700" fill="#34d399" font-size="8">• JVM内存主存储</text>
-        <text x="680" y="715" fill="#34d399" font-size="8">• CM仅用于快照持久化</text>
-        <text x="680" y="730" fill="#34d399" font-size="8">• 单线程Worker无锁</text>
-        <text x="680" y="745" fill="#34d399" font-size="8">• 批量处理提升吞吐</text>
-        <text x="680" y="760" fill="#34d399" font-size="8">• SNAPSHOT事件触发快照</text>
-        <text x="680" y="775" fill="#34d399" font-size="8">• CQ持久化保证RPO=0</text>
-        <text x="680" y="790" fill="#34d399" font-size="8">• CompletableFuture同步</text>
-
-      </svg>
-    </div>
-
-    <!-- Info Cards -->
-    <div class="cards">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot emerald"></div>
-          <h3>性能指标</h3>
-        </div>
-        <ul>
-          <li>• 吞吐量 ≥ 100,000 TPS</li>
-          <li>• HTTP返回P99 ≤ 5ms</li>
-          <li>• 端到端P99 ≤ 15ms</li>
-          <li>• 批量处理: 50事件/批次</li>
-          <li>• 快照间隔: 60秒</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot cyan"></div>
-          <h3>数据存储</h3>
-        </div>
-        <ul>
-          <li>• 主存储: ConcurrentHashMap (内存)</li>
-          <li>• 事件流: Chronicle Queue</li>
-          <li>• 快照: Chronicle Map</li>
-          <li>• 历史: H2 Database</li>
-          <li>• RPO = 0 (CQ持久化)</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot amber"></div>
-          <h3>快照机制</h3>
-        </div>
-        <ul>
-          <li>• SNAPSHOT事件触发快照</li>
-          <li>• Worker处理时自然暂停</li>
-          <li>• account_snapshot_{cq_idx}.dat</li>
-          <li>• orderbook_snapshot_{cq_idx}.dat</li>
-          <li>• clearing_index.dat每批次更新</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot violet"></div>
-          <h3>线程模型</h3>
-        </div>
-        <ul>
-          <li>• HTTP: Tomcat虚拟线程</li>
-          <li>• AccountWorker: 单线程批量</li>
-          <li>• MatchingEngine: 单线程批量</li>
-          <li>• ClearingWorker: 单线程批量</li>
-          <li>• SnapshotWorker: 定时触发</li>
-        </ul>
+<div class="container" id="report-container">
+  <div class="header">
+    <div class="header-left">
+      <div class="pulse-dot"></div>
+      <div>
+        <h1>HFT Trading System V12</h1>
+        <div class="subtitle">Architecture Diagram &middot; Single JVM &middot; RPO=0</div>
       </div>
     </div>
-
-    <!-- Footer -->
-    <p class="footer">
-      A股交易系统 V9 · 内存主存储 · 批量处理100K TPS · RPO=0 · SNAPSHOT事件触发快照
-    </p>
+    <div class="toolbar">
+      <button class="toolbar-toggle" onclick="toggleToolbar()">&#8942;</button>
+      <div class="toolbar-actions" id="toolbar-actions">
+        <button onclick="copyAsImage()">&#128203; Copy</button>
+        <button onclick="downloadPNG()">&#128444; PNG</button>
+        <button onclick="downloadPDF()">&#128196; PDF</button>
+      </div>
+    </div>
   </div>
 
-  <script>
-    async function copyAsImage(btn) {
-      const orig = btn.textContent;
+  <div class="diagram-card">
+    <svg viewBox="0 0 1150 1050" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+        </marker>
+        <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+        </marker>
+        <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+        </marker>
+        <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#fb923c"/>
+        </marker>
+        <marker id="arrowhead-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+        </marker>
+        <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/>
+        </marker>
+        <marker id="arrowhead-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/>
+        </marker>
+        <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feFlood flood-color="#22d3ee" flood-opacity="0.15"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-emerald" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feFlood flood-color="#34d399" flood-opacity="0.15"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-orange" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="2" result="blur"/>
+          <feFlood flood-color="#fb923c" flood-opacity="0.12"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+
+      <!-- Background -->
+      <rect width="1150" height="1050" fill="#020617"/>
+      <rect width="1150" height="1050" fill="url(#grid)"/>
+
+      <!-- ==================== ARROWS (drawn first, behind boxes) ==================== -->
+
+      <!-- Frontend to Tomcat -->
+      <line x1="350" y1="80" x2="350" y2="108" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+      <!-- Tomcat to account_input CQ -->
+      <line x1="350" y1="168" x2="350" y2="218" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead-rose)"/>
+      <text x="362" y="198" fill="#64748b" font-size="7" font-family="JetBrains Mono">HTTP write</text>
+
+      <!-- account_input CQ to AccountWorker -->
+      <line x1="350" y1="258" x2="350" y2="298" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
+
+      <!-- AccountWorker to fork point -->
+      <line x1="350" y1="398" x2="350" y2="418" stroke="#34d399" stroke-width="1.5"/>
+
+      <!-- Fork to account_output CQ (left) -->
+      <path d="M 350 418 L 200 418 L 200 440" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+      <text x="258" y="412" fill="#64748b" font-size="7" font-family="JetBrains Mono">push</text>
+
+      <!-- Fork to matching_input CQ (right) -->
+      <path d="M 350 418 L 500 418 L 500 440" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+      <text x="382" y="412" fill="#64748b" font-size="7" font-family="JetBrains Mono">match</text>
+
+      <!-- account_output CQ to WebSocket push label -->
+      <line x1="200" y1="472" x2="200" y2="498" stroke="#fb923c" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrowhead-orange)"/>
+      <text x="200" y="510" fill="#fb923c" font-size="7" font-family="JetBrains Mono" text-anchor="middle">Netty WebSocket Push</text>
+
+      <!-- matching_input CQ to MatchingEngine -->
+      <line x1="500" y1="472" x2="500" y2="518" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
+
+      <!-- MatchingEngine to matching_output CQ -->
+      <line x1="500" y1="618" x2="500" y2="658" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+      <!-- matching_output CQ to ClearingWorker -->
+      <line x1="500" y1="698" x2="500" y2="738" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
+
+      <!-- ClearingWorker to account_settlement CQ -->
+      <line x1="500" y1="818" x2="500" y2="850" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+      <!-- account_settlement CQ back to AccountWorker (2nd phase loop) -->
+      <path d="M 600 867 L 660 867 L 660 348 L 570 348" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrowhead-amber)"/>
+      <text x="668" y="610" fill="#fbbf24" font-size="7" font-family="JetBrains Mono" writing-mode="tb">2nd phase: settle/unfreeze</text>
+
+      <!-- SnapshotWorker to account_input CQ -->
+      <path d="M 780 640 L 780 260 L 570 238" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowhead-amber)"/>
+      <text x="788" y="440" fill="#fbbf24" font-size="7" font-family="JetBrains Mono" writing-mode="tb">SNAPSHOT event</text>
+
+      <!-- SnapshotWorker to matching_input CQ -->
+      <path d="M 820 640 L 820 460 L 570 456" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowhead-amber)"/>
+
+      <!-- SnapshotWorker to Snapshot Files -->
+      <line x1="800" y1="730" x2="800" y2="770" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
+
+      <!-- InMemory dashed lines to workers -->
+      <line x1="700" y1="298" x2="570" y2="348" stroke="#22d3ee" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.5"/>
+      <line x1="700" y1="440" x2="570" y2="568" stroke="#22d3ee" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.5"/>
+      <line x1="700" y1="480" x2="570" y2="778" stroke="#22d3ee" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.5"/>
+
+      <!-- ==================== JVM BOUNDARY ==================== -->
+      <rect x="60" y="195" width="625" height="710" rx="12" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="10,5" opacity="0.5"/>
+      <text x="80" y="895" fill="#fbbf24" font-size="10" font-weight="600" font-family="JetBrains Mono" opacity="0.7">JVM Process (ZGC &middot; 10G Heap)</text>
+
+      <!-- ==================== 1. FRONTEND ==================== -->
+      <rect x="130" y="20" width="440" height="60" rx="6" fill="#0f172a"/>
+      <rect x="130" y="20" width="440" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5" filter="url(#glow-cyan)"/>
+      <text x="350" y="46" fill="white" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">Frontend SPA</text>
+      <text x="350" y="66" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">React 18 &middot; lightweight-charts &middot; Ant Design 5.x &middot; Zustand &middot; TypeScript</text>
+
+      <!-- ==================== 2. TOMCAT CONTAINER ==================== -->
+      <rect x="130" y="108" width="440" height="60" rx="6" fill="#0f172a"/>
+      <rect x="130" y="108" width="440" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" filter="url(#glow-emerald)"/>
+      <text x="350" y="134" fill="white" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">Tomcat Container</text>
+      <text x="350" y="154" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">REST API (Virtual Threads) &middot; WebSocket (Netty) &middot; Static SPA</text>
+
+      <!-- ==================== 3. account_input CQ ==================== -->
+      <rect x="130" y="218" width="440" height="40" rx="4" fill="#0f172a"/>
+      <rect x="130" y="218" width="440" height="40" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5" filter="url(#glow-orange)"/>
+      <text x="350" y="234" fill="#fb923c" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">account_input CQ</text>
+      <text x="350" y="250" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">NEW_ORDER / CANCEL_ORDER / SETTLEMENT / SNAPSHOT / PHASE_CHANGE / DEPOSIT / INSTRUMENT_INIT</text>
+
+      <!-- ==================== 4. AccountWorker ==================== -->
+      <rect x="130" y="298" width="440" height="100" rx="6" fill="#0f172a"/>
+      <rect x="130" y="298" width="440" height="100" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" filter="url(#glow-emerald)"/>
+      <text x="350" y="320" fill="white" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">AccountWorker</text>
+      <text x="350" y="338" fill="#34d399" font-size="8" text-anchor="middle" font-family="JetBrains Mono">single thread &middot; batch 50</text>
+      <line x1="160" y1="348" x2="540" y2="348" stroke="#1e293b" stroke-width="0.5"/>
+      <text x="350" y="364" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">freeze/unfreeze funds &amp; positions &middot; settlement transfer</text>
+      <text x="350" y="378" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">deposit processing &middot; write downstream CQ &middot; wake HTTP threads (CompletableFuture)</text>
+
+      <!-- ==================== 5. FORK ==================== -->
+      <circle cx="350" cy="418" r="5" fill="#34d399" opacity="0.8"/>
+      <text x="350" y="435" fill="#475569" font-size="7" text-anchor="middle" font-family="JetBrains Mono">fork</text>
+
+      <!-- account_output CQ (left branch) -->
+      <rect x="100" y="440" width="200" height="32" rx="4" fill="#0f172a"/>
+      <rect x="100" y="440" width="200" height="32" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.2" filter="url(#glow-orange)"/>
+      <text x="200" y="456" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">account_output CQ</text>
+      <text x="200" y="467" fill="#64748b" font-size="7" text-anchor="middle" font-family="JetBrains Mono">ORDER_UPDATE &middot; ACCOUNT_UPDATE</text>
+
+      <!-- matching_input CQ (right branch) -->
+      <rect x="380" y="440" width="200" height="32" rx="4" fill="#0f172a"/>
+      <rect x="380" y="440" width="200" height="32" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.2" filter="url(#glow-orange)"/>
+      <text x="480" y="456" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">matching_input CQ</text>
+      <text x="480" y="467" fill="#64748b" font-size="7" text-anchor="middle" font-family="JetBrains Mono">NEW_ORDER &middot; CANCEL_ORDER</text>
+
+      <!-- ==================== 6. MatchingEngine ==================== -->
+      <rect x="130" y="518" width="440" height="100" rx="6" fill="#0f172a"/>
+      <rect x="130" y="518" width="440" height="100" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" filter="url(#glow-emerald)"/>
+      <text x="350" y="540" fill="white" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">MatchingEngine</text>
+      <text x="350" y="558" fill="#34d399" font-size="8" text-anchor="middle" font-family="JetBrains Mono">single thread &middot; batch 50</text>
+      <line x1="160" y1="568" x2="540" y2="568" stroke="#1e293b" stroke-width="0.5"/>
+      <text x="350" y="584" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">update OrderBook (TreeMap) &middot; match orders &middot; generate trade events</text>
+      <text x="350" y="598" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">five-level market data &middot; K-line aggregation</text>
+
+      <!-- ==================== 7. matching_output CQ ==================== -->
+      <rect x="130" y="658" width="440" height="40" rx="4" fill="#0f172a"/>
+      <rect x="130" y="658" width="440" height="40" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5" filter="url(#glow-orange)"/>
+      <text x="350" y="674" fill="#fb923c" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">matching_output CQ</text>
+      <text x="350" y="690" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">ORDER_UPDATE / TRADE / CANCEL_SUCCESS / CANCEL_REJECT</text>
+
+      <!-- ==================== 8. ClearingWorker ==================== -->
+      <rect x="130" y="738" width="440" height="80" rx="6" fill="#0f172a"/>
+      <rect x="130" y="738" width="440" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" filter="url(#glow-emerald)"/>
+      <text x="350" y="760" fill="white" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">ClearingWorker</text>
+      <text x="350" y="776" fill="#34d399" font-size="8" text-anchor="middle" font-family="JetBrains Mono">single thread &middot; batch 100</text>
+      <line x1="160" y1="786" x2="540" y2="786" stroke="#1e293b" stroke-width="0.5"/>
+      <text x="350" y="800" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">update order status &middot; calculate commission/refund &middot; output SETTLEMENT/UNFREEZE</text>
+
+      <!-- ==================== 9. account_settlement CQ ==================== -->
+      <rect x="280" y="850" width="320" height="35" rx="4" fill="#0f172a"/>
+      <rect x="280" y="850" width="320" height="35" rx="4" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.2" filter="url(#glow-orange)"/>
+      <text x="440" y="864" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">account_settlement CQ</text>
+      <text x="440" y="878" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">SETTLEMENT / UNFREEZE</text>
+
+      <!-- ==================== RIGHT SIDE PANELS ==================== -->
+
+      <!-- InMemory Stores -->
+      <rect x="700" y="218" width="220" height="170" rx="6" fill="#0f172a"/>
+      <rect x="700" y="218" width="220" height="170" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="810" y="240" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">InMemory Stores</text>
+      <text x="810" y="254" fill="#64748b" font-size="7" text-anchor="middle" font-family="JetBrains Mono">ConcurrentHashMap (primary)</text>
+      <line x1="720" y1="262" x2="900" y2="262" stroke="#1e293b" stroke-width="0.5"/>
+      <text x="720" y="280" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">accounts</text>
+      <text x="720" y="296" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">positions</text>
+      <text x="720" y="312" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">orders</text>
+      <text x="720" y="328" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">orderBooks (TreeMap)</text>
+      <text x="720" y="344" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">instruments</text>
+      <text x="720" y="368" fill="#475569" font-size="7" font-family="JetBrains Mono">JVM heap = source of truth</text>
+      <text x="720" y="380" fill="#475569" font-size="7" font-family="JetBrains Mono">CM only for snapshots</text>
+
+      <!-- SnapshotWorker -->
+      <rect x="700" y="570" width="220" height="160" rx="6" fill="#0f172a"/>
+      <rect x="700" y="570" width="220" height="160" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="810" y="592" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">SnapshotWorker</text>
+      <text x="810" y="606" fill="#64748b" font-size="7" text-anchor="middle" font-family="JetBrains Mono">timer trigger (60s interval)</text>
+      <line x1="720" y1="614" x2="900" y2="614" stroke="#1e293b" stroke-width="0.5"/>
+      <text x="720" y="632" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">1. write SNAPSHOT event</text>
+      <text x="730" y="648" fill="#64748b" font-size="7" font-family="JetBrains Mono">&rarr; account_input CQ</text>
+      <text x="730" y="662" fill="#64748b" font-size="7" font-family="JetBrains Mono">&rarr; matching_input CQ</text>
+      <text x="720" y="680" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">2. workers process batch</text>
+      <text x="720" y="696" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">3. on SNAPSHOT: dump memory</text>
+      <text x="720" y="712" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">4. atomic rename to .dat</text>
+      <text x="720" y="726" fill="#475569" font-size="7" font-family="JetBrains Mono">no pause needed (event-driven)</text>
+
+      <!-- Snapshot Files -->
+      <rect x="700" y="770" width="220" height="140" rx="6" fill="#0f172a"/>
+      <rect x="700" y="770" width="220" height="140" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="810" y="792" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Snapshot Files (CM)</text>
+      <text x="810" y="806" fill="#64748b" font-size="7" text-anchor="middle" font-family="JetBrains Mono">Chronicle Map &middot; disk persisted</text>
+      <line x1="720" y1="814" x2="900" y2="814" stroke="#1e293b" stroke-width="0.5"/>
+      <text x="720" y="832" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">account_snapshot_{index}.dat</text>
+      <text x="720" y="848" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">matching_snapshot_{index}.dat</text>
+      <text x="720" y="864" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">clearing_position.dat</text>
+      <text x="720" y="880" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">.checksum (MD5 verify)</text>
+      <text x="720" y="896" fill="#475569" font-size="7" font-family="JetBrains Mono">tmp &rarr; atomic rename</text>
+      <text x="720" y="906" fill="#475569" font-size="7" font-family="JetBrains Mono">RPO = 0 guaranteed</text>
+
+      <!-- ==================== PERFORMANCE METRICS BOX ==================== -->
+      <rect x="700" y="940" width="420" height="50" rx="6" fill="#0f172a"/>
+      <rect x="700" y="940" width="420" height="50" rx="6" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1"/>
+      <text x="910" y="960" fill="#34d399" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Performance Metrics</text>
+      <text x="910" y="978" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">100K TPS &middot; HTTP P99 &le; 5ms &middot; E2E P99 &le; 15ms &middot; batch 50/100 &middot; snapshot 60s</text>
+
+      <!-- ==================== V12 KEY DESIGN BOX ==================== -->
+      <rect x="700" y="1000" width="420" height="50" rx="6" fill="#0f172a"/>
+      <rect x="700" y="1000" width="420" height="50" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="910" y="1020" fill="#fbbf24" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">V12 Key Design</text>
+      <text x="910" y="1038" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">JVM memory primary &middot; CM only for snapshots &middot; single-thread workers &middot; batch processing</text>
+
+      <!-- ==================== ANNOTATIONS ==================== -->
+
+      <!-- Phase label on the loop-back arrow -->
+      <rect x="710" y="870" width="120" height="18" rx="3" fill="rgba(120, 53, 15, 0.5)" stroke="#fbbf24" stroke-width="0.8"/>
+      <text x="770" y="883" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">2nd phase loop</text>
+
+      <!-- HTTP sync label -->
+      <rect x="60" y="128" width="58" height="28" rx="3" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="0.8"/>
+      <text x="89" y="140" fill="#fb7185" font-size="7" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">HTTP</text>
+      <text x="89" y="150" fill="#fb7185" font-size="6" text-anchor="middle" font-family="JetBrains Mono">sync wait</text>
+      <line x1="118" y1="142" x2="130" y2="142" stroke="#fb7185" stroke-width="1" marker-end="url(#arrowhead-rose)"/>
+
+      <!-- CompletableFuture annotation -->
+      <rect x="60" y="310" width="58" height="28" rx="3" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="0.8"/>
+      <text x="89" y="322" fill="#fb7185" font-size="6" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">CF</text>
+      <text x="89" y="332" fill="#fb7185" font-size="6" text-anchor="middle" font-family="JetBrains Mono">.complete()</text>
+      <line x1="118" y1="324" x2="130" y2="324" stroke="#fb7185" stroke-width="0.8" stroke-dasharray="3,2" marker-end="url(#arrowhead-rose)"/>
+
+      <!-- Data flow phase annotations on left side -->
+      <text x="75" y="250" fill="#475569" font-size="7" font-family="JetBrains Mono">&#9312; input</text>
+      <text x="75" y="460" fill="#475569" font-size="7" font-family="JetBrains Mono">&#9313; fork</text>
+      <text x="75" y="570" fill="#475569" font-size="7" font-family="JetBrains Mono">&#9314; match</text>
+      <text x="75" y="690" fill="#475569" font-size="7" font-family="JetBrains Mono">&#9315; clear</text>
+      <text x="75" y="830" fill="#475569" font-size="7" font-family="JetBrains Mono">&#9316; settle</text>
+
+    </svg>
+  </div>
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot emerald"></div>
+        <h3>Performance</h3>
+      </div>
+      <ul>
+        <li><strong>100K+ TPS</strong> sustained throughput</li>
+        <li><strong>HTTP P99 &le; 5ms</strong> sync response</li>
+        <li><strong>E2E P99 &le; 15ms</strong> order to trade</li>
+        <li><strong>Batch 50/100</strong> event processing</li>
+        <li><strong>Snapshot 60s</strong> interval</li>
+        <li><strong>ZGC</strong> generational, 10G heap</li>
+        <li><strong>Virtual threads</strong> for HTTP I/O</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot cyan"></div>
+        <h3>Data Storage</h3>
+      </div>
+      <ul>
+        <li><strong>JVM Heap</strong> &mdash; primary store (CHM)</li>
+        <li><strong>Chronicle Queue</strong> &mdash; event streams</li>
+        <li><strong>Chronicle Map</strong> &mdash; snapshot files only</li>
+        <li><strong>H2</strong> &mdash; history queries (off hot path)</li>
+        <li><strong>3 CQ files</strong> &mdash; account_input, matching_input, matching_output</li>
+        <li><strong>account_output CQ</strong> &mdash; WebSocket push</li>
+        <li><strong>account_settlement CQ</strong> &mdash; loopback</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot violet"></div>
+        <h3>Snapshot Mechanism</h3>
+      </div>
+      <ul>
+        <li><strong>RPO = 0</strong> zero data loss</li>
+        <li><strong>Event-driven</strong> SNAPSHOT event in CQ</li>
+        <li><strong>No pause</strong> workers process naturally</li>
+        <li><strong>Atomic rename</strong> tmp &rarr; .dat</li>
+        <li><strong>MD5 checksum</strong> .checksum files</li>
+        <li><strong>3 snapshot types</strong> account, matching, clearing</li>
+        <li><strong>Recovery</strong> load snapshot + replay CQ</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot amber"></div>
+        <h3>Thread Model</h3>
+      </div>
+      <ul>
+        <li><strong>HTTP</strong> &mdash; N virtual threads (Project Loom)</li>
+        <li><strong>WebSocket</strong> &mdash; N Netty EventLoop</li>
+        <li><strong>AccountWorker</strong> &mdash; 1 thread, batch 50</li>
+        <li><strong>MatchingEngine</strong> &mdash; 1 thread, batch 50</li>
+        <li><strong>ClearingWorker</strong> &mdash; 1 thread, batch 100</li>
+        <li><strong>MarketDataPublisher</strong> &mdash; 1 thread</li>
+        <li><strong>SnapshotWorker</strong> &mdash; 1 timer thread</li>
+        <li><strong>CompletableFuture</strong> &mdash; HTTP sync wake</li>
+        <li><strong>Three-layer idempotency</strong> &mdash; tradeId, orderId, position</li>
+        <li><strong>Four-phase recovery</strong> &mdash; snapshot &rarr; CQ replay</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">
+    A&#32929;&#20132;&#26131;&#31995;&#32479; V12 &middot; &#20869;&#23384;&#20027;&#23384;&#20648; &middot; &#25209;&#37327;&#22788;&#29702;100K TPS &middot; RPO=0 &middot; &#19977;&#23618;&#24187;&#31561; &middot; &#22235;&#38454;&#27573;&#24674;&#22797;
+  </div>
+</div>
+
+<script>
+function toggleToolbar() {
+  const actions = document.getElementById('toolbar-actions');
+  actions.classList.toggle('visible');
+}
+
+function captureDiagram() {
+  const container = document.getElementById('report-container');
+  const rect = container.getBoundingClientRect();
+  const pad = 32;
+  return html2canvas(document.body, {
+    x: rect.left + window.scrollX - pad,
+    y: rect.top + window.scrollY - pad,
+    width: rect.width + pad * 2,
+    height: rect.height + pad * 2,
+    scale: 2,
+    backgroundColor: '#020617',
+    useCORS: true,
+    ignoreElements: (el) => el.classList && el.classList.contains('toolbar')
+  });
+}
+
+async function copyAsImage() {
+  try {
+    const canvas = await captureDiagram();
+    canvas.toBlob(async (blob) => {
       try {
-        const el = document.getElementById('report-container');
-        const r = el.getBoundingClientRect();
-        const pad = 32;
-        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        btn.textContent = '✓ Copied!';
-      } catch (e) { btn.textContent = '✗ Failed'; }
-      setTimeout(() => btn.textContent = orig, 2000);
-    }
+        alert('Diagram copied to clipboard!');
+      } catch (e) {
+        alert('Clipboard access requires HTTPS or localhost.');
+      }
+    }, 'image/png');
+  } catch (e) {
+    alert('Copy failed: ' + e.message);
+  }
+}
 
-    async function downloadPNG(btn) {
-      const orig = btn.textContent;
-      btn.textContent = '⏳ ...';
-      try {
-        const el = document.getElementById('report-container');
-        const r = el.getBoundingClientRect();
-        const pad = 32;
-        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
-        const link = document.createElement('a');
-        link.download = 'trading-system-architecture-v9.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        btn.textContent = '✓ Done!';
-      } catch (e) { btn.textContent = '✗ Failed'; }
-      setTimeout(() => btn.textContent = orig, 2000);
-    }
+async function downloadPNG() {
+  try {
+    const canvas = await captureDiagram();
+    const link = document.createElement('a');
+    link.download = 'hft-v12-architecture.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (e) {
+    alert('PNG download failed: ' + e.message);
+  }
+}
 
-    async function downloadPDF(btn) {
-      const orig = btn.textContent;
-      btn.textContent = '⏳ ...';
-      try {
-        const el = document.getElementById('report-container');
-        const r = el.getBoundingClientRect();
-        const pad = 32;
-        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
-        const imgData = canvas.toDataURL('image/png');
-        const { jsPDF } = window.jspdf;
-        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
-        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
-        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-        pdf.save('trading-system-architecture-v9.pdf');
-        btn.textContent = '✓ Done!';
-      } catch (e) { btn.textContent = '✗ Failed'; }
-      setTimeout(() => btn.textContent = orig, 2000);
-    }
-  </script>
+async function downloadPDF() {
+  try {
+    const canvas = await captureDiagram();
+    const imgData = canvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+      unit: 'px',
+      format: [canvas.width, canvas.height],
+      hotfixes: ['px_scaling']
+    });
+    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+    pdf.save('hft-v12-architecture.pdf');
+  } catch (e) {
+    alert('PDF download failed: ' + e.message);
+  }
+}
+</script>
 </body>
 </html>

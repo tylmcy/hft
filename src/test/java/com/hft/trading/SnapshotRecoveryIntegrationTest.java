@@ -3,11 +3,13 @@ package com.hft.trading;
 import com.hft.trading.model.Account;
 import com.hft.trading.model.AccountStatus;
 import com.hft.trading.model.Position;
+import com.hft.trading.service.AlertService;
 import com.hft.trading.snapshot.AccountSnapshotReader;
 import com.hft.trading.snapshot.AccountSnapshotWriter;
 import com.hft.trading.snapshot.SnapshotFileUtils;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryPositionStore;
+import com.hft.trading.util.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,8 +38,9 @@ class SnapshotRecoveryIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService);
+        positionStore = new InMemoryPositionStore(alertService);
         writer = new AccountSnapshotWriter(accountStore, positionStore, tempDir.toString() + "/");
         reader = new AccountSnapshotReader(accountStore, positionStore);
     }
@@ -90,8 +93,9 @@ class SnapshotRecoveryIntegrationTest {
         assertEquals(expectedMd5, actualMd5, "校验和应匹配");
 
         // 4. 清空内存存储（模拟重启）
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService2 = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService2);
+        positionStore = new InMemoryPositionStore(alertService2);
 
         assertEquals(0, accountStore.size(), "清空后账户应为0");
         assertEquals(0, positionStore.size(), "清空后持仓应为0");
@@ -164,8 +168,9 @@ class SnapshotRecoveryIntegrationTest {
         // 创建 .tmp 文件（使用相同的数据）
         Account newAccount = new Account(2001L, 3001L);
         newAccount.deposit(200_000_00L);
-        InMemoryAccountStore tmpStore = new InMemoryAccountStore();
-        InMemoryPositionStore tmpPositionStore = new InMemoryPositionStore();
+        AlertService alertService3 = TestUtils.createTestAlertService();
+        InMemoryAccountStore tmpStore = new InMemoryAccountStore(alertService3);
+        InMemoryPositionStore tmpPositionStore = new InMemoryPositionStore(alertService3);
         tmpStore.addAccount(newAccount);
         AccountSnapshotWriter tmpWriter = new AccountSnapshotWriter(tmpStore, tmpPositionStore, tempDir.toString() + "/");
         tmpWriter.writeSnapshot(8888L, 80L, 40L, 60L);
@@ -196,8 +201,9 @@ class SnapshotRecoveryIntegrationTest {
         assertTrue(Files.exists(recoveredChecksumFile), ".md5 checksum 文件应存在");
 
         // 6. 验证恢复的文件可以正常读取
-        InMemoryAccountStore recoveredStore = new InMemoryAccountStore();
-        InMemoryPositionStore recoveredPositionStore = new InMemoryPositionStore();
+        AlertService alertService4 = TestUtils.createTestAlertService();
+        InMemoryAccountStore recoveredStore = new InMemoryAccountStore(alertService4);
+        InMemoryPositionStore recoveredPositionStore = new InMemoryPositionStore(alertService4);
         AccountSnapshotReader recoveredReader = new AccountSnapshotReader(recoveredStore, recoveredPositionStore);
         recoveredReader.readSnapshot(newDatFile.toString());
 
@@ -218,8 +224,9 @@ class SnapshotRecoveryIntegrationTest {
 
         for (int i = 0; i < cqIndices.length; i++) {
             // 每次使用新的 store 避免数据累积
-            InMemoryAccountStore writeStore = new InMemoryAccountStore();
-            InMemoryPositionStore writePositionStore = new InMemoryPositionStore();
+            AlertService alertService5 = TestUtils.createTestAlertService();
+            InMemoryAccountStore writeStore = new InMemoryAccountStore(alertService5);
+            InMemoryPositionStore writePositionStore = new InMemoryPositionStore(alertService5);
 
             Account account = new Account(1001L, 2001L);
             account.deposit(balances[i]);
@@ -253,8 +260,9 @@ class SnapshotRecoveryIntegrationTest {
         assertTrue(latestSnapshot.get().getFilePath().endsWith("account_snapshot_3000.dat"));
 
         // 5. 读取最新快照验证数据
-        InMemoryAccountStore latestStore = new InMemoryAccountStore();
-        InMemoryPositionStore latestPositionStore = new InMemoryPositionStore();
+        AlertService alertService6 = TestUtils.createTestAlertService();
+        InMemoryAccountStore latestStore = new InMemoryAccountStore(alertService6);
+        InMemoryPositionStore latestPositionStore = new InMemoryPositionStore(alertService6);
         AccountSnapshotReader latestReader = new AccountSnapshotReader(latestStore, latestPositionStore);
         latestReader.readSnapshot(latestSnapshot.get().getFilePath());
 
@@ -275,8 +283,9 @@ class SnapshotRecoveryIntegrationTest {
         assertTrue(Files.exists(datFile));
 
         // 3. 清空并恢复
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService7 = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService7);
+        positionStore = new InMemoryPositionStore(alertService7);
         reader = new AccountSnapshotReader(accountStore, positionStore);
 
         AccountSnapshotReader.SnapshotData snapshotData = reader.readSnapshot(datFile.toString());
@@ -319,8 +328,9 @@ class SnapshotRecoveryIntegrationTest {
         writer.writeSnapshot(5000L, 500L, 250L, 375L);
 
         // 3. 清空并恢复
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService7 = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService7);
+        positionStore = new InMemoryPositionStore(alertService7);
         reader = new AccountSnapshotReader(accountStore, positionStore);
         reader.readSnapshot(tempDir.resolve("account_snapshot_5000.dat").toString());
 

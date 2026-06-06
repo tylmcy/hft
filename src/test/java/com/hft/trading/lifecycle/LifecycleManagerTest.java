@@ -1,10 +1,12 @@
 package com.hft.trading.lifecycle;
 
 import com.hft.trading.queue.QueueManager;
+import com.hft.trading.service.AlertService;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryInstrumentStore;
 import com.hft.trading.store.InMemoryOrderStore;
 import com.hft.trading.store.InMemoryPositionStore;
+import com.hft.trading.util.TestUtils;
 import com.hft.trading.worker.AccountWorker;
 import com.hft.trading.worker.ClearingWorker;
 import com.hft.trading.worker.MatchingEngineWorker;
@@ -41,8 +43,9 @@ class LifecycleManagerTest {
     @BeforeEach
     void setUp() {
         // Create real stores
-        InMemoryAccountStore accountStore = new InMemoryAccountStore();
-        InMemoryPositionStore positionStore = new InMemoryPositionStore();
+        AlertService alertService = TestUtils.createTestAlertService();
+        InMemoryAccountStore accountStore = new InMemoryAccountStore(alertService);
+        InMemoryPositionStore positionStore = new InMemoryPositionStore(alertService);
         InMemoryOrderStore orderStore = new InMemoryOrderStore();
         InMemoryInstrumentStore instrumentStore = new InMemoryInstrumentStore();
 

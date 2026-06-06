@@ -1,10 +1,12 @@
 package com.hft.trading;
 
 import com.hft.trading.model.*;
+import com.hft.trading.service.AlertService;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryInstrumentStore;
 import com.hft.trading.store.InMemoryOrderStore;
 import com.hft.trading.store.InMemoryPositionStore;
+import com.hft.trading.util.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,8 +34,9 @@ class FullSystemIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService);
+        positionStore = new InMemoryPositionStore(alertService);
         orderStore = new InMemoryOrderStore();
         instrumentStore = new InMemoryInstrumentStore();
     }

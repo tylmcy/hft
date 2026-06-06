@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import javax.sql.DataSource;
 
 /**
  * LifecycleManager - 系统生命周期管理器
@@ -50,9 +51,13 @@ public class LifecycleManager {
     private AccountWorker accountWorker;
     private MatchingEngineWorker matchingEngineWorker;
     private ClearingWorker clearingWorker;
+    private AsyncPersistenceWorker asyncPersistenceWorker;
 
     // RecoveryManager
     private RecoveryManager recoveryManager;
+
+    // DataSource
+    private DataSource dataSource;
 
     // 配置
     private final String chronicleBasePath;
@@ -80,6 +85,13 @@ public class LifecycleManager {
         this.instrumentStore = instrumentStore;
         this.queueManager = queueManager;
         this.chronicleBasePath = "./data/chronicle/";
+    }
+
+    /**
+     * 设置数据源（用于持久化）
+     */
+    public void setDataSource(DataSource dataSource) {
+        this.dataSource = dataSource;
     }
 
     /**
@@ -188,6 +200,15 @@ public class LifecycleManager {
             webSocketPushService // WebSocket推送服务
         );
 
+        // AsyncPersistenceWorker (if DataSource is configured)
+        if (dataSource != null) {
+            asyncPersistenceWorker = new AsyncPersistenceWorker(
+                orderStore,
+                queueManager.getMatchingOutputQueue(),
+                dataSource
+            );
+        }
+
         // Create RecoveryManager
         recoveryManager = new RecoveryManager(
             "./data/snapshots/",
@@ -213,6 +234,7 @@ public class LifecycleManager {
         }
 
         logger.info("Workers initialized: AccountWorker, MatchingEngineWorker, ClearingWorker, RecoveryManager" +
+            (asyncPersistenceWorker != null ? ", AsyncPersistenceWorker" : "") +
             (marketDataPublisher != null ? ", MarketDataPublisher" : ""));
     }
 
@@ -253,6 +275,12 @@ public class LifecycleManager {
         clearingWorker.start();
         sleep(100);
 
+        // 启动 AsyncPersistenceWorker（在 ClearingWorker 之后）
+        if (asyncPersistenceWorker != null) {
+            asyncPersistenceWorker.start();
+            sleep(100);
+        }
+
         // 启动 MarketDataPublisher（在所有 Workers 之后）
         if (marketDataPublisher != null) {
             marketDataPublisher.start();
@@ -271,6 +299,11 @@ public class LifecycleManager {
         // 先停止 MarketDataPublisher
         if (marketDataPublisher != null) {
             marketDataPublisher.stop();
+        }
+
+        // 停止 AsyncPersistenceWorker（在 ClearingWorker 之前）
+        if (asyncPersistenceWorker != null) {
+            asyncPersistenceWorker.stop();
         }
 
         if (clearingWorker != null) {
@@ -378,4 +411,5 @@ public class LifecycleManager {
     public AccountWorker getAccountWorker() { return accountWorker; }
     public MatchingEngineWorker getMatchingEngineWorker() { return matchingEngineWorker; }
     public ClearingWorker getClearingWorker() { return clearingWorker; }
+    public AsyncPersistenceWorker getAsyncPersistenceWorker() { return asyncPersistenceWorker; }
 }

@@ -1,898 +1,1150 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>线程工作模型数据流图 V9</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: #fff;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 28px;
-            color: #00d4ff;
-            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
-        }
-        .diagram-container {
-            max-width: 1600px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>线程工作模型数据流图 V12</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1800px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,211,238,0.4); } 50% { opacity: 0.7; box-shadow: 0 0 12px 4px rgba(34,211,238,0.2); } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; background: linear-gradient(90deg, #22d3ee, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
 
-        /* 线程池区域 */
-        .thread-pool {
-            margin-bottom: 40px;
-            border: 2px solid;
-            border-radius: 15px;
-            padding: 20px;
-            position: relative;
-        }
-        .pool-io { border-color: #4CAF50; background: rgba(76, 175, 80, 0.1); }
-        .pool-business { border-color: #2196F3; background: rgba(33, 150, 243, 0.1); }
-        .pool-matching { border-color: #FF9800; background: rgba(255, 152, 0, 0.1); }
-        .pool-clearing { border-color: #E91E63; background: rgba(233, 30, 99, 0.1); }
-        .pool-async { border-color: #9C27B0; background: rgba(156, 39, 176, 0.1); }
+    /* Section titles */
+    .section-title { color: #22d3ee; font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; padding-left: 0.75rem; border-left: 3px solid #22d3ee; margin-top: 2.5rem; }
+    .section-title:first-of-type { margin-top: 0; }
 
-        .pool-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            padding: 5px 15px;
-            border-radius: 5px;
-            display: inline-block;
-        }
-        .pool-io .pool-title { background: #4CAF50; }
-        .pool-business .pool-title { background: #2196F3; }
-        .pool-matching .pool-title { background: #FF9800; }
-        .pool-clearing .pool-title { background: #E91E63; }
-        .pool-async .pool-title { background: #9C27B0; }
+    /* V12 Change highlight box */
+    .v12-changes { background: linear-gradient(135deg, rgba(251,146,60,0.12) 0%, rgba(234,88,12,0.08) 100%); border: 1.5px solid rgba(251,146,60,0.5); border-radius: 0.75rem; padding: 1.25rem 1.5rem; margin-bottom: 2rem; position: relative; overflow: hidden; }
+    .v12-changes::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: linear-gradient(180deg, #fb923c, #ea580c); }
+    .v12-changes-title { color: #fb923c; font-size: 0.95rem; font-weight: 700; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+    .v12-changes-grid { display: grid; grid-template-columns: 1fr; gap: 0.5rem; }
+    .v12-change-item { display: flex; align-items: flex-start; gap: 0.625rem; font-size: 0.78rem; color: #cbd5e1; line-height: 1.5; }
+    .v12-change-num { background: rgba(251,146,60,0.25); color: #fb923c; font-weight: 700; font-size: 0.7rem; min-width: 1.5rem; height: 1.5rem; border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 0.1rem; }
+    .v12-change-item strong { color: #fbbf24; }
 
-        /* 线程节点 */
-        .thread-row {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            margin: 15px 0;
-            flex-wrap: wrap;
-        }
-        .thread-node {
-            background: linear-gradient(145deg, #2a2a4a, #1a1a3a);
-            border: 2px solid #00d4ff;
-            border-radius: 10px;
-            padding: 15px 20px;
-            min-width: 180px;
-            text-align: center;
-            position: relative;
-            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
-        }
-        .thread-node.active {
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2); }
-            50% { box-shadow: 0 4px 25px rgba(0, 212, 255, 0.5); }
-        }
-        .thread-name {
-            font-weight: bold;
-            color: #00d4ff;
-            font-size: 14px;
-        }
-        .thread-count {
-            font-size: 12px;
-            color: #888;
-            margin-top: 5px;
-        }
-        .thread-action {
-            font-size: 11px;
-            color: #aaa;
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid #333;
-        }
+    /* Flow section */
+    .flow-section { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; margin-bottom: 1.5rem; }
+    .flow-title { font-size: 1rem; font-weight: 600; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; }
+    .flow-title .flow-icon { width: 28px; height: 28px; border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; }
+    .flow-title .flow-label { color: white; }
+    .flow-title .flow-tag { font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 9999px; font-weight: 600; margin-left: 0.5rem; }
 
-        /* 数据存储节点 */
-        .storage-node {
-            background: linear-gradient(145deg, #1a3a1a, #0a2a0a);
-            border: 2px solid #4CAF50;
-            border-radius: 10px;
-            padding: 12px 18px;
-            min-width: 150px;
-            text-align: center;
-            position: relative;
-        }
-        .storage-node.memory {
-            background: linear-gradient(145deg, #3a2a1a, #2a1a0a);
-            border-color: #FF9800;
-        }
-        .storage-node.db {
-            background: linear-gradient(145deg, #1a2a3a, #0a1a2a);
-            border-color: #2196F3;
-        }
-        .storage-name {
-            font-weight: bold;
-            color: #4CAF50;
-            font-size: 13px;
-        }
-        .storage-node.memory .storage-name { color: #FF9800; }
-        .storage-node.db .storage-name { color: #2196F3; }
-        .storage-detail {
-            font-size: 10px;
-            color: #888;
-            margin-top: 5px;
-        }
+    /* Step diagram */
+    .flow-diagram { display: flex; flex-direction: column; gap: 0; }
+    .flow-step { display: flex; align-items: stretch; gap: 0; position: relative; }
+    .step-rail { width: 3rem; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; position: relative; }
+    .step-dot { width: 1.5rem; height: 1.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; flex-shrink: 0; position: relative; z-index: 2; }
+    .step-line { width: 2px; flex: 1; min-height: 0.5rem; }
+    .step-body { flex: 1; padding: 0.5rem 0 0.5rem 0.5rem; min-height: 3.5rem; display: flex; flex-direction: column; justify-content: center; }
+    .step-thread { font-size: 0.78rem; font-weight: 600; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .step-thread-tag { font-size: 0.6rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-weight: 600; letter-spacing: 0.025em; }
+    .step-action { font-size: 0.78rem; color: #cbd5e1; line-height: 1.6; }
+    .step-action code { background: rgba(34,211,238,0.12); color: #22d3ee; padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-size: 0.72rem; font-family: inherit; }
+    .step-detail { font-size: 0.7rem; color: #64748b; margin-top: 0.25rem; }
+    .step-detail .store-tag { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.65rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-weight: 500; }
+    .step-sub { margin-top: 0.375rem; padding-left: 1rem; border-left: 2px solid #334155; }
+    .step-sub-item { font-size: 0.72rem; color: #94a3b8; line-height: 1.7; display: flex; align-items: flex-start; gap: 0.375rem; }
+    .step-sub-item .bullet { color: #475569; flex-shrink: 0; }
 
-        /* 箭头和连接线 */
-        .arrow {
-            display: flex;
-            align-items: center;
-            color: #00d4ff;
-            font-size: 24px;
-            padding: 0 10px;
-        }
-        .arrow-label {
-            font-size: 10px;
-            color: #888;
-            margin: 0 5px;
-            max-width: 80px;
-            text-align: center;
-        }
+    /* Color themes */
+    .theme-cyan .step-dot { background: rgba(34,211,238,0.2); color: #22d3ee; border: 2px solid #22d3ee; }
+    .theme-cyan .step-line { background: rgba(34,211,238,0.15); }
+    .theme-cyan .step-thread { color: #22d3ee; }
+    .theme-cyan .step-thread-tag { background: rgba(34,211,238,0.15); color: #22d3ee; }
 
-        /* 数据流区域 */
-        .flow-section {
-            margin: 30px 0;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 15px;
-        }
-        .flow-title {
-            font-size: 16px;
-            color: #ffd700;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #333;
-        }
+    .theme-green .step-dot { background: rgba(52,211,153,0.2); color: #34d399; border: 2px solid #34d399; }
+    .theme-green .step-line { background: rgba(52,211,153,0.15); }
+    .theme-green .step-thread { color: #34d399; }
+    .theme-green .step-thread-tag { background: rgba(52,211,153,0.15); color: #34d399; }
 
-        /* 详细流程图 */
-        .flow-diagram {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .flow-step {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 10px 15px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 8px;
-            border-left: 3px solid #00d4ff;
-        }
-        .step-num {
-            background: #00d4ff;
-            color: #000;
-            width: 25px;
-            height: 25px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 12px;
-            flex-shrink: 0;
-        }
-        .step-content {
-            flex: 1;
-        }
-        .step-thread {
-            color: #00d4ff;
-            font-weight: bold;
-            font-size: 13px;
-        }
-        .step-action {
-            color: #aaa;
-            font-size: 12px;
-            margin-top: 3px;
-        }
-        .step-storage {
-            color: #4CAF50;
-            font-size: 11px;
-            margin-top: 3px;
-        }
+    .theme-amber .step-dot { background: rgba(251,191,36,0.2); color: #fbbf24; border: 2px solid #fbbf24; }
+    .theme-amber .step-line { background: rgba(251,191,36,0.15); }
+    .theme-amber .step-thread { color: #fbbf24; }
+    .theme-amber .step-thread-tag { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
-        /* Index 持久化说明 */
-        .index-box {
-            background: linear-gradient(145deg, #2a1a3a, #1a0a2a);
-            border: 2px solid #E91E63;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 20px 0;
-        }
-        .index-title {
-            color: #E91E63;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .index-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 8px 0;
-            font-size: 12px;
-        }
-        .index-key {
-            background: #333;
-            padding: 3px 8px;
-            border-radius: 4px;
-            color: #ffd700;
-            font-family: monospace;
-        }
+    .theme-rose .step-dot { background: rgba(251,113,133,0.2); color: #fb7185; border: 2px solid #fb7185; }
+    .theme-rose .step-line { background: rgba(251,113,133,0.15); }
+    .theme-rose .step-thread { color: #fb7185; }
+    .theme-rose .step-thread-tag { background: rgba(251,113,133,0.15); color: #fb7185; }
 
-        /* 重要变更标记 */
-        .change-box {
-            background: linear-gradient(145deg, #3a2a1a, #2a1a0a);
-            border: 2px solid #FF9800;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 20px 0;
-        }
-        .change-title {
-            color: #FF9800;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
+    .theme-violet .step-dot { background: rgba(167,139,250,0.2); color: #a78bfa; border: 2px solid #a78bfa; }
+    .theme-violet .step-line { background: rgba(167,139,250,0.15); }
+    .theme-violet .step-thread { color: #a78bfa; }
+    .theme-violet .step-thread-tag { background: rgba(167,139,250,0.15); color: #a78bfa; }
 
-        /* 图例 */
-        .legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-top: 30px;
-            padding: 15px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 10px;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-        }
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 4px;
-        }
+    .theme-orange .step-dot { background: rgba(251,146,60,0.2); color: #fb923c; border: 2px solid #fb923c; }
+    .theme-orange .step-line { background: rgba(251,146,60,0.15); }
+    .theme-orange .step-thread { color: #fb923c; }
+    .theme-orange .step-thread-tag { background: rgba(251,146,60,0.15); color: #fb923c; }
 
-        /* 响应式 */
-        @media (max-width: 1200px) {
-            .thread-row {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            .arrow {
-                transform: rotate(90deg);
-                padding: 10px 0;
-            }
-        }
-    </style>
+    /* Info box */
+    .info-box { border-radius: 0.75rem; padding: 1rem 1.25rem; margin-top: 1rem; border: 1px solid; }
+    .info-box.cyan { background: rgba(34,211,238,0.06); border-color: rgba(34,211,238,0.25); }
+    .info-box.green { background: rgba(52,211,153,0.06); border-color: rgba(52,211,153,0.25); }
+    .info-box.amber { background: rgba(251,191,36,0.06); border-color: rgba(251,191,36,0.25); }
+    .info-box.rose { background: rgba(251,113,133,0.06); border-color: rgba(251,113,133,0.25); }
+    .info-box.violet { background: rgba(167,139,250,0.06); border-color: rgba(167,139,250,0.25); }
+    .info-box.orange { background: rgba(251,146,60,0.06); border-color: rgba(251,146,60,0.25); }
+    .info-box-title { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.375rem; }
+    .info-box.cyan .info-box-title { color: #22d3ee; }
+    .info-box.green .info-box-title { color: #34d399; }
+    .info-box.amber .info-box-title { color: #fbbf24; }
+    .info-box.rose .info-box-title { color: #fb7185; }
+    .info-box.violet .info-box-title { color: #a78bfa; }
+    .info-box.orange .info-box-title { color: #fb923c; }
+    .info-box-item { font-size: 0.75rem; color: #94a3b8; line-height: 1.7; display: flex; align-items: flex-start; gap: 0.5rem; }
+    .info-box-item code { background: rgba(255,255,255,0.08); color: #e2e8f0; padding: 0.05rem 0.35rem; border-radius: 0.25rem; font-size: 0.68rem; font-family: inherit; }
+
+    /* Thread pool section */
+    .pool-section { border-radius: 0.75rem; padding: 1rem 1.25rem; margin-bottom: 0.75rem; border: 1.5px solid; }
+    .pool-section.pool-cyan { background: rgba(34,211,238,0.04); border-color: rgba(34,211,238,0.3); }
+    .pool-section.pool-green { background: rgba(52,211,153,0.04); border-color: rgba(52,211,153,0.3); }
+    .pool-section.pool-amber { background: rgba(251,191,36,0.04); border-color: rgba(251,191,36,0.3); }
+    .pool-section.pool-rose { background: rgba(251,113,133,0.04); border-color: rgba(251,113,133,0.3); }
+    .pool-section.pool-violet { background: rgba(167,139,250,0.04); border-color: rgba(167,139,250,0.3); }
+    .pool-section.pool-orange { background: rgba(251,146,60,0.04); border-color: rgba(251,146,60,0.3); }
+    .pool-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+    .pool-cyan .pool-title { color: #22d3ee; }
+    .pool-green .pool-title { color: #34d399; }
+    .pool-amber .pool-title { color: #fbbf24; }
+    .pool-rose .pool-title { color: #fb7185; }
+    .pool-violet .pool-title { color: #a78bfa; }
+    .pool-orange .pool-title { color: #fb923c; }
+    .pool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem; }
+    .pool-node { background: rgba(15,23,42,0.6); border-radius: 0.5rem; padding: 0.75rem; border: 1px solid #1e293b; }
+    .pool-node-name { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .pool-node-count { font-size: 0.68rem; color: #64748b; margin-bottom: 0.375rem; }
+    .pool-node-desc { font-size: 0.7rem; color: #94a3b8; line-height: 1.6; }
+
+    /* Table */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 0.5rem; }
+    .data-table th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #334155; color: #94a3b8; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .data-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(30,41,59,0.5); color: #cbd5e1; vertical-align: top; }
+    .data-table tr:hover td { background: rgba(34,211,238,0.03); }
+    .data-table code { background: rgba(255,255,255,0.06); color: #e2e8f0; padding: 0.05rem 0.3rem; border-radius: 0.2rem; font-size: 0.68rem; font-family: inherit; }
+
+    /* SVG diagram container */
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; margin-bottom: 1.5rem; }
+    svg { width: 100%; display: block; }
+
+    /* Footer */
+    .footer { text-align: center; margin-top: 2rem; color: #475569; font-size: 0.75rem; padding-top: 1.5rem; border-top: 1px solid #1e293b; }
+
+    /* Legend */
+    .legend { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-top: 1.5rem; padding: 1rem 1.25rem; background: rgba(15,23,42,0.5); border-radius: 0.75rem; border: 1px solid #1e293b; }
+    .legend-item { display: flex; align-items: center; gap: 0.375rem; font-size: 0.72rem; color: #94a3b8; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+    @media (max-width: 768px) {
+      body { padding: 1rem; }
+      .pool-grid { grid-template-columns: 1fr; }
+      .v12-changes-grid { gap: 0.375rem; }
+    }
+  </style>
 </head>
 <body>
-    <h1>🧵 线程工作模型数据流图 V9</h1>
-
-    <div class="diagram-container">
-
-        <!-- ==================== 重要变更说明 ==================== -->
-        <div class="change-box">
-            <div class="change-title">⚠️ V9 重要变更</div>
-            <div class="index-item">
-                <span>1. <strong>JVM内存为主存储</strong> - ConcurrentHashMap存储账户/持仓/订单，Chronicle Map仅用于快照持久化</span>
-            </div>
-            <div class="index-item">
-                <span>2. <strong>单线程Worker批量处理</strong> - AccountWorker/MatchingEngine/ClearingWorker各单线程，批量处理提升吞吐</span>
-            </div>
-            <div class="index-item">
-                <span>3. <strong>SNAPSHOT事件触发快照</strong> - SnapshotWorker写入SNAPSHOT事件到CQ，Worker处理时自然暂停后续事件</span>
-            </div>
-            <div class="index-item">
-                <span>4. <strong>独立快照文件命名</strong> - account_snapshot_{cq_index}.dat, orderbook_snapshot_{cq_index}.dat, clearing_index.dat</span>
-            </div>
-            <div class="index-item">
-                <span>5. <strong>CompletableFuture同步</strong> - HTTP下单使用CompletableFuture.await(5s)等待冻结完成</span>
-            </div>
-            <div class="index-item">
-                <span>6. <strong>RPO = 0</strong> - CQ事件持久化到磁盘，重启后从快照+CQ增量恢复，数据零丢失</span>
-            </div>
+  <div class="container" id="report-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Thread Workflow & Data Flow Diagram V12</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">Copy</button>
+            <button onclick="downloadPNG(this)">PNG</button>
+            <button onclick="downloadPDF(this)">PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options">&#8943;</button>
         </div>
-
-        <!-- ==================== 流程 1: HTTP请求 → 订单处理 ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">📊 流程 1: HTTP请求 → 订单处理 (同步路径)</div>
-
-            <div class="flow-diagram">
-                <div class="flow-step">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread (8-32线程)</div>
-                        <div class="step-action">接收 HTTP POST /api/orders 请求</div>
-                        <div class="step-storage">不访问 Chronicle Map</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">2</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
-                        <div class="step-action">参数校验 → 风控检查 (读 Chronicle Map)</div>
-                        <div class="step-storage">读取: accounts.dat, positions.dat</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">3</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
-                        <div class="step-action">compute 原子冻结资金/持仓</div>
-                        <div class="step-storage">写入: accounts.dat, positions.dat (compute原子操作)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">4</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
-                        <div class="step-action">写入订单到 Order Queue (类型: NEW_ORDER)</div>
-                        <div class="step-storage">写入: order_queue.dat (Chronicle Queue)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">5</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread (同一线程)</div>
-                        <div class="step-action">同步返回 OrderResult 给客户端</div>
-                        <div class="step-storage">响应: orderId, status="PENDING"</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== 流程 2: 撤单请求 ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">❌ 流程 2: 撤单请求 (写入 Order Queue)</div>
-
-            <div class="flow-diagram">
-                <div class="flow-step">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread</div>
-                        <div class="step-action">接收 HTTP DELETE /api/orders/{orderId}</div>
-                        <div class="step-storage">不访问 Chronicle Map</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">2</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread</div>
-                        <div class="step-action">写入撤单请求到 Order Queue (类型: CANCEL_ORDER)</div>
-                        <div class="step-storage">写入: order_queue.dat (Chronicle Queue)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">3</div>
-                    <div class="step-content">
-                        <div class="step-thread">Tomcat HTTP-IO Thread</div>
-                        <div class="step-action">同步返回 CancelResult (已提交)</div>
-                        <div class="step-storage">响应: orderId, status="CANCEL_PENDING"</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">✅ 统一的 Order Queue 设计</div>
-                <div class="index-item">
-                    <span>Order Queue 包含两种事件类型: NEW_ORDER 和 CANCEL_ORDER</span>
-                </div>
-                <div class="index-item">
-                    <span>MatchingEngine 统一处理，保证顺序</span>
-                </div>
-                <div class="index-item">
-                    <span>无需独立的 Cancel Queue 和 CancelProcessor 线程</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== 流程 3: 订单 → 撮合 (多 Symbol) ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">⚡ 流程 3: 订单 → 撮合 (多 Symbol 支持)</div>
-
-            <div class="flow-diagram">
-                <div class="flow-step">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread (单线程)</div>
-                        <div class="step-action">从 Order Queue 零拷贝读取 OrderEvent</div>
-                        <div class="step-storage">读取: order_queue.dat (ExcerptTailer)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">2</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread (同一线程)</div>
-                        <div class="step-action">根据 symbol 获取对应的 OrderBook</div>
-                        <div class="step-storage">内存: Map&lt;String, OrderBook&gt; orderBooks</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">3a</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread (NEW_ORDER)</div>
-                        <div class="step-action">写入 orderbook.dat → 加入 OrderBook → 执行撮合</div>
-                        <div class="step-storage">写入: orderbook.dat (PENDING状态) → 内存 OrderBook</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">3b</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread (CANCEL_ORDER)</div>
-                        <div class="step-action">从 OrderBook 移除 → 更新 orderbook.dat 状态</div>
-                        <div class="step-storage">写入: orderbook.dat (CANCEL状态) → 生成 CancelEvent</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">4</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread (同一线程)</div>
-                        <div class="step-action">生成 TradeEvent / CancelEvent / ORDER_UPDATE，写入 Trade Queue</div>
-                        <div class="step-storage">写入: trade_queue.dat (Chronicle Queue)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">5</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread (同一线程)</div>
-                        <div class="step-action">更新 orderbook.dat (remainingQty, status)</div>
-                        <div class="step-storage">写入: orderbook.dat (compute 原子更新)</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">📊 多 Symbol OrderBook 结构</div>
-                <div class="index-item">
-                    <span class="index-key">symbol → OrderBook</span>
-                    <span>每个 Symbol 独立的 OrderBook，内存 TreeMap 结构</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">买单: 价格降序</span>
-                    <span>最高价优先成交</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">卖单: 价格升序</span>
-                    <span>最低价优先成交</span>
-                </div>
-                <div class="index-item">
-                    <span>撮合算法: 价格优先、时间优先</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== 流程 4: 成交 → 清算 (单线程顺序处理) ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">💰 流程 4: 成交 → 清算 (单线程顺序处理)</div>
-
-            <div class="flow-diagram">
-                <div class="flow-step">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (单线程)</div>
-                        <div class="step-action">从 Trade Queue 读取事件 (ORDER_UPDATE/TRADE/CANCEL)</div>
-                        <div class="step-storage">读取: trade_queue.dat (ExcerptTailer)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">2a</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (ORDER_UPDATE事件)</div>
-                        <div class="step-action">更新订单状态: PENDING → NEW (订单已入OrderBook)</div>
-                        <div class="step-storage">写入: orders.cm (内存状态更新)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">2b</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (TRADE事件)</div>
-                        <div class="step-action">putIfAbsent 幂等检查 (防止重复清算)</div>
-                        <div class="step-storage">原子操作: processed_trades.dat (putIfAbsent)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">3</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (TRADE事件)</div>
-                        <div class="step-action">compute 原子更新买方账户/持仓</div>
-                        <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">4</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (TRADE事件)</div>
-                        <div class="step-action">compute 原子更新卖方账户/持仓</div>
-                        <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">5</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
-                        <div class="step-action">更新 Index (单线程，直接赋值)</div>
-                        <div class="step-storage">写入: progress.dat (直接 setIndex)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">6</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
-                        <div class="step-action">推送 WebSocket 成交通知</div>
-                        <div class="step-storage">写入: WebSocket Channel (Netty异步发送)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">7</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (同一线程)</div>
-                        <div class="step-action">继续处理下一个成交 (循环)</div>
-                        <div class="step-storage">无内存队列，直接从 Trade Queue 读取</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">🔑 单线程清算优势</div>
-                <div class="index-item">
-                    <span class="index-key">Index 顺序更新</span>
-                    <span>无冲突，无需滑动窗口</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">设计简单</span>
-                    <span>无内存队列，无多线程同步问题</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">重启恢复简单</span>
-                    <span>从 Index + 1 开始读取即可</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">性能足够</span>
-                    <span>每笔清算 ~5-10μs，10万 TPS</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== 流程 5: 撤单解冻 (MatchingEngine 处理) ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">🔓 流程 5: 撤单解冻 (MatchingEngine 处理)</div>
-
-            <div class="flow-diagram">
-                <div class="flow-step">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread</div>
-                        <div class="step-action">从 Order Queue 读取 CANCEL_ORDER 类型</div>
-                        <div class="step-storage">读取: order_queue.dat</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">2</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread</div>
-                        <div class="step-action">从 OrderBook 移除订单，更新 orderbook.dat</div>
-                        <div class="step-storage">写入: orderbook.dat (status=CANCEL)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">3</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread</div>
-                        <div class="step-action">生成 CancelEvent，写入 Trade Queue</div>
-                        <div class="step-storage">写入: trade_queue.dat</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">4</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread (单线程)</div>
-                        <div class="step-action">读取 CancelEvent，compute 原子解冻资金/持仓</div>
-                        <div class="step-storage">写入: accounts.dat, positions.dat (compute)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">5</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread</div>
-                        <div class="step-action">推送 WebSocket 撤单结果</div>
-                        <div class="step-storage">写入: WebSocket Channel</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== 流程 6: JVM 重启恢复 ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">🔄 JVM 重启恢复流程</div>
-
-            <div class="flow-diagram">
-                <div class="flow-step">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                        <div class="step-thread">Main Thread (启动线程)</div>
-                        <div class="step-action">加载所有 Chronicle Map 文件</div>
-                        <div class="step-storage">读取: accounts.dat, positions.dat, orderbook.dat, progress.dat, processed_trades.dat</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">2</div>
-                    <div class="step-content">
-                        <div class="step-thread">Main Thread</div>
-                        <div class="step-action">从 orderbook.dat 恢复所有 Symbol 的 OrderBook</div>
-                        <div class="step-storage">读取: orderbook.dat → 重建 Map&lt;String, OrderBook&gt;</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">3</div>
-                    <div class="step-content">
-                        <div class="step-thread">Main Thread</div>
-                        <div class="step-action">读取各队列的 Index</div>
-                        <div class="step-storage">读取: progress.dat.get("order_queue_index"), progress.dat.get("trade_queue_index")</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">4</div>
-                    <div class="step-content">
-                        <div class="step-thread">MatchingEngine Thread</div>
-                        <div class="step-action">从 order_queue_index + 1 开始读取</div>
-                        <div class="step-storage">tailer.moveToIndex(orderIndex + 1)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">5</div>
-                    <div class="step-content">
-                        <div class="step-thread">TradeReader Thread</div>
-                        <div class="step-action">从 trade_queue_index + 1 开始读取</div>
-                        <div class="step-storage">tailer.moveToIndex(tradeIndex + 1)</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">6</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread</div>
-                        <div class="step-action">putIfAbsent 幂等检查 (防止重复清算)</div>
-                        <div class="step-storage">如果已处理，跳过；否则执行清算</div>
-                    </div>
-                </div>
-
-                <div class="flow-step">
-                    <div class="step-num">7</div>
-                    <div class="step-content">
-                        <div class="step-thread">ClearingWorker Thread</div>
-                        <div class="step-action">标记 Index 已处理，滑动窗口向前移动</div>
-                        <div class="step-storage">更新: progress.dat (BitSet + windowStart)</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">📊 OrderBook 恢复流程</div>
-                <div class="index-item">
-                    <span class="index-key">orderbook.dat 结构</span>
-                    <span>Key: (symbolCode << 32) | orderId, Value: OrderState</span>
-                </div>
-                <div class="index-item">
-                    <span>恢复时遍历所有 OrderState，按 symbol 分组重建 OrderBook</span>
-                </div>
-                <div class="index-item">
-                    <span>只恢复 PENDING 和 PARTIAL_FILLED 状态的订单</span>
-                </div>
-                <div class="index-item">
-                    <span>FILLED 和 CANCEL 状态的订单跳过</span>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">🔒 防重复清算保证 (单线程)</div>
-                <div class="index-item">
-                    <span class="index-key">tradeId 去重</span>
-                    <span>putIfAbsent 在清算前执行，防止重复清算</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">Index 顺序更新</span>
-                    <span>单线程保证 Index 顺序，无需滑动窗口</span>
-                </div>
-                <div class="index-item">
-                    <span>重启后可能重复读取，但不会重复处理</span>
-                </div>
-                <div class="index-item">
-                    <span>putIfAbsent 在清算前执行，保证原子性</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== 线程池配置汇总 ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">📋 线程池配置汇总 (8核CPU) - 单线程清算版</div>
-
-            <div class="thread-pool pool-io">
-                <div class="pool-title">IO 线程池</div>
-                <div class="thread-row">
-                    <div class="thread-node active">
-                        <div class="thread-name">Tomcat HTTP-IO</div>
-                        <div class="thread-count">8-32 线程 (动态)</div>
-                        <div class="thread-action">接收HTTP请求<br>执行订单处理</div>
-                    </div>
-                    <div class="thread-node">
-                        <div class="thread-name">WebSocket EventLoop</div>
-                        <div class="thread-count">8 线程</div>
-                        <div class="thread-action">WebSocket推送<br>不访问 Chronicle Map</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="thread-pool pool-matching">
-                <div class="pool-title">撮合线程</div>
-                <div class="thread-row">
-                    <div class="thread-node active">
-                        <div class="thread-name">MatchingEngine</div>
-                        <div class="thread-count">1 线程</div>
-                        <div class="thread-action">多 Symbol 撮合<br>处理 NEW/CANCEL<br>更新 orderbook.dat</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="thread-pool pool-clearing">
-                <div class="pool-title">清算线程 (单线程)</div>
-                <div class="thread-row">
-                    <div class="thread-node active">
-                        <div class="thread-name">ClearingWorker</div>
-                        <div class="thread-count">1 线程</div>
-                        <div class="thread-action">单线程顺序清算<br>compute 原子更新<br>Index 顺序更新</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="thread-pool pool-async">
-                <div class="pool-title">异步线程</div>
-                <div class="thread-row">
-                    <div class="thread-node">
-                        <div class="thread-name">AsyncPersistence</div>
-                        <div class="thread-count">1 线程</div>
-                        <div class="thread-action">H2 批量写入<br>定时刷新</div>
-                    </div>
-                    <div class="thread-node">
-                        <div class="thread-name">MarketData</div>
-                        <div class="thread-count">1 线程</div>
-                        <div class="thread-action">行情接收<br>新浪财经爬取</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">📊 线程总数统计 (单线程清算版)</div>
-                <div class="index-item">
-                    <span>Tomcat HTTP: 8-32 + WebSocket: 8 + Matching: 1 + Clearing: 1 + Async: 2 = 20-44 线程</span>
-                </div>
-                <div class="index-item">
-                    <span>清算改为单线程，设计简单可靠，性能足够 (10万 TPS)</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== Chronicle Map 存储结构 ==================== -->
-        <div class="flow-section">
-            <div class="flow-title">💾 Chronicle Map 存储结构 (V2)</div>
-
-            <div class="index-box">
-                <div class="index-title">账户/持仓存储</div>
-                <div class="index-item">
-                    <span class="index-key">accounts.dat</span>
-                    <span>Key: accountId, Value: AccountState (balance, available, frozen, margin)</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">positions.dat</span>
-                    <span>Key: (accountId << 32) | symbolCode, Value: PositionState</span>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">订单簿存储 (新增)</div>
-                <div class="index-item">
-                    <span class="index-key">orderbook.dat</span>
-                    <span>Key: (symbolCode << 32) | orderId, Value: OrderState</span>
-                </div>
-                <div class="index-item">
-                    <span>OrderState: orderId, symbol, price, quantity, remainingQty, side, accountId, status, createTime, updateTime</span>
-                </div>
-                <div class="index-item">
-                    <span>status: PENDING / PARTIAL_FILLED / FILLED / CANCEL</span>
-                </div>
-            </div>
-
-            <div class="index-box">
-                <div class="index-title">进度/幂等存储</div>
-                <div class="index-item">
-                    <span class="index-key">progress.dat</span>
-                    <span>Key: "order_queue_index" / "trade_queue_index" / "persistence_index"</span>
-                </div>
-                <div class="index-item">
-                    <span class="index-key">processed_trades.dat</span>
-                    <span>Key: tradeId, Value: ProcessedTradeState (幂等去重)</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- 图例 -->
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-color" style="background: #4CAF50;"></div>
-                <span>IO 线程池</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #FF9800;"></div>
-                <span>撮合线程</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #E91E63;"></div>
-                <span>清算线程池</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #9C27B0;"></div>
-                <span>异步线程</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #4CAF50; border: 2px solid #fff;"></div>
-                <span>Chronicle Map (持久化)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #FF9800; border: 2px solid #fff;"></div>
-                <span>内存数据结构</span>
-            </div>
-        </div>
-
+      </div>
+      <p class="subtitle">线程工作模型 · 数据流图 · 五队列批量处理 · 三层幂等 · 四阶段恢复 · RPO=0</p>
     </div>
+
+    <!-- ==================== V12 Changes Highlight ==================== -->
+    <div class="v12-changes">
+      <div class="v12-changes-title">
+        <span style="font-size:1.1rem">&#9888;</span> V12 Important Changes
+      </div>
+      <div class="v12-changes-grid">
+        <div class="v12-change-item">
+          <span class="v12-change-num">1</span>
+          <span><strong>JVM内存为主存储</strong> -- ConcurrentHashMap存储账户/持仓/订单，Chronicle Map仅用于快照持久化</span>
+        </div>
+        <div class="v12-change-item">
+          <span class="v12-change-num">2</span>
+          <span><strong>单线程Worker批量处理</strong> -- AccountWorker/MatchingEngine/ClearingWorker各单线程，批量处理提升吞吐</span>
+        </div>
+        <div class="v12-change-item">
+          <span class="v12-change-num">3</span>
+          <span><strong>五个CQ事件队列</strong> -- account_input, account_output, matching_input, matching_output, account_settlement</span>
+        </div>
+        <div class="v12-change-item">
+          <span class="v12-change-num">4</span>
+          <span><strong>SNAPSHOT事件触发快照</strong> -- SnapshotWorker写入SNAPSHOT事件到CQ，Worker处理时先处理同批普通事件再快照</span>
+        </div>
+        <div class="v12-change-item">
+          <span class="v12-change-num">5</span>
+          <span><strong>三层幂等模型</strong> -- HTTP层idempotencyKey &rarr; MatchingEngine processed_order_ids &rarr; AccountWorker processed_trade_ids</span>
+        </div>
+        <div class="v12-change-item">
+          <span class="v12-change-num">6</span>
+          <span><strong>四阶段恢复</strong> -- AccountWorker &rarr; MatchingEngine &rarr; ClearingWorker &rarr; AccountWorker第二阶段</span>
+        </div>
+        <div class="v12-change-item">
+          <span class="v12-change-num">7</span>
+          <span><strong>CompletableFuture同步</strong> -- HTTP下单使用 <code>CompletableFuture.orTimeout(5s)</code> 等待冻结完成</span>
+        </div>
+        <div class="v12-change-item">
+          <span class="v12-change-num">8</span>
+          <span><strong>RPO = 0</strong> -- CQ writeMode=SYNC持久化，快照原子rename+MD5校验，重启后数据零丢失</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== System Overview SVG ==================== -->
+    <h2 class="section-title">System Overview -- Thread & CQ Topology</h2>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1700 520" min-width="1700">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker>
+          <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/></marker>
+          <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+          <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/></marker>
+          <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/></marker>
+          <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/></marker>
+          <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fb923c"/></marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)"/>
+        <text x="850" y="30" fill="white" font-size="15" font-weight="700" text-anchor="middle">V12 Thread & CQ Data Flow Topology</text>
+
+        <!-- HTTP Virtual Threads -->
+        <rect x="30" y="55" width="240" height="170" rx="8" fill="rgba(8,51,68,0.2)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="150" y="78" fill="#22d3ee" font-size="11" font-weight="600" text-anchor="middle">HTTP Virtual Threads</text>
+        <text x="150" y="93" fill="#64748b" font-size="8" text-anchor="middle">REST API</text>
+        <rect x="45" y="105" width="210" height="60" rx="5" fill="#0f172a" stroke="#22d3ee" stroke-width="1"/>
+        <text x="150" y="125" fill="white" font-size="10" font-weight="600" text-anchor="middle">Tomcat Virtual Thread</text>
+        <text x="150" y="140" fill="#94a3b8" font-size="7" text-anchor="middle">Validate &rarr; Idempotent &rarr; Write CQ</text>
+        <text x="150" y="153" fill="#22d3ee" font-size="7" font-weight="600" text-anchor="middle">future.orTimeout(5s) wait</text>
+        <rect x="45" y="175" width="210" height="40" rx="5" fill="#0f172a" stroke="#22d3ee" stroke-width="1"/>
+        <text x="150" y="195" fill="white" font-size="10" font-weight="600" text-anchor="middle">WebSocket EventLoop (8)</text>
+        <text x="150" y="208" fill="#94a3b8" font-size="7" text-anchor="middle">Real-time push</text>
+
+        <!-- CQ: account_input -->
+        <rect x="310" y="60" width="130" height="90" rx="6" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="375" y="82" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle">account_input</text>
+        <text x="375" y="95" fill="#64748b" font-size="7" text-anchor="middle">.cq4</text>
+        <text x="375" y="112" fill="#94a3b8" font-size="6.5" text-anchor="middle">NEW_ORDER</text>
+        <text x="375" y="123" fill="#94a3b8" font-size="6.5" text-anchor="middle">CANCEL_ORDER</text>
+        <text x="375" y="134" fill="#94a3b8" font-size="6.5" text-anchor="middle">DEPOSIT / SNAPSHOT</text>
+
+        <!-- AccountWorker -->
+        <rect x="310" y="170" width="240" height="150" rx="8" fill="rgba(6,78,59,0.2)" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="430" y="193" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">AccountWorker</text>
+        <text x="430" y="208" fill="#64748b" font-size="8" text-anchor="middle">1 Thread, Batch 50</text>
+        <rect x="325" y="218" width="210" height="90" rx="5" fill="#0f172a" stroke="#34d399" stroke-width="1"/>
+        <text x="430" y="238" fill="white" font-size="9" font-weight="600" text-anchor="middle">Freeze / Unfreeze / Settle</text>
+        <text x="430" y="255" fill="#94a3b8" font-size="7" text-anchor="middle">ConcurrentHashMap (memory)</text>
+        <text x="430" y="268" fill="#34d399" font-size="7" text-anchor="middle">Idempotent: tradeId+"_"+orderId</text>
+        <text x="430" y="281" fill="#fbbf24" font-size="7" text-anchor="middle">Pending-mutations pattern</text>
+        <text x="430" y="294" fill="#22d3ee" font-size="7" text-anchor="middle">CF.complete() + WS push</text>
+
+        <!-- CQ: matching_input -->
+        <rect x="590" y="60" width="130" height="90" rx="6" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="655" y="82" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle">matching_input</text>
+        <text x="655" y="95" fill="#64748b" font-size="7" text-anchor="middle">.cq4</text>
+        <text x="655" y="112" fill="#94a3b8" font-size="6.5" text-anchor="middle">NEW_ORDER</text>
+        <text x="655" y="123" fill="#94a3b8" font-size="6.5" text-anchor="middle">CANCEL_ORDER</text>
+        <text x="655" y="134" fill="#94a3b8" font-size="6.5" text-anchor="middle">INSTRUMENT_INIT</text>
+
+        <!-- MatchingEngine -->
+        <rect x="590" y="170" width="240" height="150" rx="8" fill="rgba(120,53,15,0.2)" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="710" y="193" fill="#fbbf24" font-size="11" font-weight="600" text-anchor="middle">MatchingEngine</text>
+        <text x="710" y="208" fill="#64748b" font-size="8" text-anchor="middle">1 Thread, Batch 50</text>
+        <rect x="605" y="218" width="210" height="90" rx="5" fill="#0f172a" stroke="#fbbf24" stroke-width="1"/>
+        <text x="710" y="238" fill="white" font-size="9" font-weight="600" text-anchor="middle">Price-Time Priority</text>
+        <text x="710" y="255" fill="#94a3b8" font-size="7" text-anchor="middle">TreeMap OrderBook (memory)</text>
+        <text x="710" y="268" fill="#fbbf24" font-size="7" text-anchor="middle">LIMIT/MARKET/FAK/FOK</text>
+        <text x="710" y="281" fill="#34d399" font-size="7" text-anchor="middle">Idempotent: processed_order_ids</text>
+        <text x="710" y="294" fill="#22d3ee" font-size="7" text-anchor="middle">5-level quote + Kline push</text>
+
+        <!-- CQ: matching_output -->
+        <rect x="870" y="60" width="130" height="90" rx="6" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="935" y="82" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle">matching_output</text>
+        <text x="935" y="95" fill="#64748b" font-size="7" text-anchor="middle">.cq4</text>
+        <text x="935" y="112" fill="#94a3b8" font-size="6.5" text-anchor="middle">ORDER_UPDATE</text>
+        <text x="935" y="123" fill="#94a3b8" font-size="6.5" text-anchor="middle">TRADE</text>
+        <text x="935" y="134" fill="#94a3b8" font-size="6.5" text-anchor="middle">CANCEL_SUCCESS/REJECT</text>
+
+        <!-- ClearingWorker -->
+        <rect x="870" y="170" width="240" height="150" rx="8" fill="rgba(136,19,55,0.2)" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="990" y="193" fill="#fb7185" font-size="11" font-weight="600" text-anchor="middle">ClearingWorker</text>
+        <text x="990" y="208" fill="#64748b" font-size="8" text-anchor="middle">1 Thread, Batch 100</text>
+        <rect x="885" y="218" width="210" height="90" rx="5" fill="#0f172a" stroke="#fb7185" stroke-width="1"/>
+        <text x="990" y="238" fill="white" font-size="9" font-weight="600" text-anchor="middle">Clearing & Commission</text>
+        <text x="990" y="255" fill="#94a3b8" font-size="7" text-anchor="middle">Commission: floor() / Frozen: ceil()</text>
+        <text x="990" y="268" fill="#fb7185" font-size="7" text-anchor="middle">No idempotent check (AccountWorker)</text>
+        <text x="990" y="281" fill="#fbbf24" font-size="7" text-anchor="middle">SETTLEMENT x 2 per trade</text>
+        <text x="990" y="294" fill="#34d399" font-size="7" text-anchor="middle">UNFREEZE on CANCEL_SUCCESS</text>
+
+        <!-- CQ: account_settlement -->
+        <rect x="1150" y="60" width="130" height="90" rx="6" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="1215" y="82" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle">account_settlement</text>
+        <text x="1215" y="95" fill="#64748b" font-size="7" text-anchor="middle">.cq4</text>
+        <text x="1215" y="112" fill="#94a3b8" font-size="6.5" text-anchor="middle">SETTLEMENT</text>
+        <text x="1215" y="123" fill="#94a3b8" font-size="6.5" text-anchor="middle">UNFREEZE</text>
+
+        <!-- AccountWorker (settlement) loop-back -->
+        <rect x="1150" y="170" width="200" height="100" rx="8" fill="rgba(6,78,59,0.15)" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="1250" y="195" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">AccountWorker</text>
+        <text x="1250" y="210" fill="#64748b" font-size="7" text-anchor="middle">(same thread, Phase 2)</text>
+        <rect x="1165" y="222" width="170" height="38" rx="5" fill="#0f172a" stroke="#34d399" stroke-width="1"/>
+        <text x="1250" y="242" fill="white" font-size="8" font-weight="600" text-anchor="middle">Settle + Unfreeze</text>
+        <text x="1250" y="254" fill="#34d399" font-size="7" text-anchor="middle">Idempotent: settlementId/unfreezeId</text>
+
+        <!-- CQ: account_output -->
+        <rect x="1150" y="290" width="130" height="70" rx="6" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="1215" y="312" fill="#a78bfa" font-size="9" font-weight="600" text-anchor="middle">account_output</text>
+        <text x="1215" y="325" fill="#64748b" font-size="7" text-anchor="middle">.cq4</text>
+        <text x="1215" y="340" fill="#94a3b8" font-size="6.5" text-anchor="middle">FREEZE/UNFREEZE/...</text>
+        <text x="1215" y="351" fill="#94a3b8" font-size="6.5" text-anchor="middle">BALANCE/POSITION</text>
+
+        <!-- Snapshot & Storage -->
+        <rect x="1380" y="55" width="290" height="280" rx="8" fill="rgba(8,51,68,0.15)" stroke="#64748b" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="1525" y="78" fill="#94a3b8" font-size="11" font-weight="600" text-anchor="middle">Snapshot & Storage</text>
+
+        <rect x="1395" y="90" width="260" height="55" rx="5" fill="#0f172a" stroke="#22d3ee" stroke-width="1"/>
+        <text x="1525" y="110" fill="#22d3ee" font-size="9" font-weight="600" text-anchor="middle">ConcurrentHashMap (Primary)</text>
+        <text x="1525" y="125" fill="#94a3b8" font-size="7" text-anchor="middle">accounts / positions / orders</text>
+        <text x="1525" y="138" fill="#64748b" font-size="7" text-anchor="middle">JVM Memory - Main Store</text>
+
+        <rect x="1395" y="155" width="260" height="55" rx="5" fill="#0f172a" stroke="#fb923c" stroke-width="1"/>
+        <text x="1525" y="175" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle">Chronicle Map (Snapshot)</text>
+        <text x="1525" y="190" fill="#94a3b8" font-size="7" text-anchor="middle">account_snapshot_{idx}.dat</text>
+        <text x="1525" y="203" fill="#94a3b8" font-size="7" text-anchor="middle">matching_snapshot_{idx}.dat + .checksum</text>
+
+        <rect x="1395" y="220" width="260" height="55" rx="5" fill="#0f172a" stroke="#fb7185" stroke-width="1"/>
+        <text x="1525" y="240" fill="#fb7185" font-size="9" font-weight="600" text-anchor="middle">clearing_position.dat</text>
+        <text x="1525" y="255" fill="#94a3b8" font-size="7" text-anchor="middle">ClearingWorker position index</text>
+        <text x="1525" y="268" fill="#64748b" font-size="7" text-anchor="middle">Atomic: tmp &rarr; rename</text>
+
+        <rect x="1395" y="285" width="260" height="40" rx="5" fill="#0f172a" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1525" y="305" fill="#a78bfa" font-size="9" font-weight="600" text-anchor="middle">H2 Database</text>
+        <text x="1525" y="318" fill="#64748b" font-size="7" text-anchor="middle">History queries only (not in main path)</text>
+
+        <!-- Auxiliary threads -->
+        <rect x="1380" y="355" width="290" height="150" rx="8" fill="rgba(76,29,149,0.15)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="1525" y="378" fill="#a78bfa" font-size="11" font-weight="600" text-anchor="middle">Auxiliary Threads</text>
+        <rect x="1395" y="390" width="125" height="40" rx="5" fill="#0f172a" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1457" y="408" fill="white" font-size="8" font-weight="600" text-anchor="middle">SnapshotWorker</text>
+        <text x="1457" y="422" fill="#64748b" font-size="7" text-anchor="middle">1 Thread</text>
+        <rect x="1530" y="390" width="125" height="40" rx="5" fill="#0f172a" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1592" y="408" fill="white" font-size="8" font-weight="600" text-anchor="middle">PhaseManager</text>
+        <text x="1592" y="422" fill="#64748b" font-size="7" text-anchor="middle">1 Thread</text>
+        <rect x="1395" y="440" width="125" height="40" rx="5" fill="#0f172a" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1457" y="458" fill="white" font-size="8" font-weight="600" text-anchor="middle">RiskMonitor</text>
+        <text x="1457" y="472" fill="#64748b" font-size="7" text-anchor="middle">1 Thread</text>
+        <rect x="1530" y="440" width="125" height="40" rx="5" fill="#0f172a" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1592" y="458" fill="white" font-size="8" font-weight="600" text-anchor="middle">LifecycleMgr</text>
+        <text x="1592" y="472" fill="#64748b" font-size="7" text-anchor="middle">1 Thread</text>
+
+        <!-- ===================== Data Flow Arrows ===================== -->
+        <!-- HTTP -> account_input -->
+        <line x1="270" y1="130" x2="308" y2="105" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrow-cyan)"/>
+        <text x="275" y="100" fill="#22d3ee" font-size="7" font-weight="600">write</text>
+
+        <!-- account_input -> AccountWorker -->
+        <line x1="375" y1="150" x2="375" y2="168" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+        <text x="385" y="163" fill="#fb923c" font-size="7">read</text>
+
+        <!-- AccountWorker -> matching_input -->
+        <line x1="550" y1="245" x2="588" y2="105" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <text x="555" y="170" fill="#34d399" font-size="7" font-weight="600">write</text>
+
+        <!-- matching_input -> MatchingEngine -->
+        <line x1="655" y1="150" x2="655" y2="168" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+
+        <!-- MatchingEngine -> matching_output -->
+        <line x1="830" y1="245" x2="868" y2="105" stroke="#fbbf24" stroke-width="2" marker-end="url(#arrow-amber)"/>
+        <text x="835" y="170" fill="#fbbf24" font-size="7" font-weight="600">write</text>
+
+        <!-- matching_output -> ClearingWorker -->
+        <line x1="935" y1="150" x2="935" y2="168" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+
+        <!-- ClearingWorker -> account_settlement -->
+        <line x1="1110" y1="245" x2="1148" y2="105" stroke="#fb7185" stroke-width="2" marker-end="url(#arrow-rose)"/>
+        <text x="1115" y="170" fill="#fb7185" font-size="7" font-weight="600">write</text>
+
+        <!-- account_settlement -> AccountWorker(phase2) -->
+        <line x1="1215" y1="150" x2="1215" y2="168" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+
+        <!-- AccountWorker(phase2) -> account_output -->
+        <line x1="1250" y1="270" x2="1250" y2="288" stroke="#a78bfa" stroke-width="2" marker-end="url(#arrow-violet)"/>
+        <text x="1260" y="283" fill="#a78bfa" font-size="7">write</text>
+
+        <!-- AccountWorker(phase1) -> account_output -->
+        <path d="M 550 280 Q 900 350 1148 325" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrow-violet)"/>
+        <text x="850" y="345" fill="#a78bfa" font-size="7">write</text>
+
+        <!-- SnapshotWorker -> CQs (conceptual) -->
+        <path d="M 1457 390 Q 1400 380 375 155" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow-violet)"/>
+        <text x="900" y="383" fill="#a78bfa" font-size="6">SNAPSHOT event</text>
+
+        <!-- Storage arrows -->
+        <line x1="550" y1="260" x2="1393" y2="120" stroke="#22d3ee" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow-cyan)"/>
+        <line x1="830" y1="260" x2="1393" y2="180" stroke="#fb923c" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow-orange)"/>
+        <line x1="1110" y1="260" x2="1393" y2="245" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow-rose)"/>
+
+        <!-- Legend -->
+        <rect x="30" y="370" width="700" height="140" rx="6" fill="rgba(15,23,42,0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="50" y="395" fill="white" font-size="10" font-weight="600">Legend</text>
+        <line x1="50" y1="415" x2="100" y2="415" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrow-cyan)"/>
+        <text x="115" y="419" fill="#94a3b8" font-size="8">HTTP write</text>
+        <line x1="200" y1="415" x2="250" y2="415" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <text x="265" y="419" fill="#94a3b8" font-size="8">AccountWorker write</text>
+        <line x1="400" y1="415" x2="450" y2="415" stroke="#fbbf24" stroke-width="2" marker-end="url(#arrow-amber)"/>
+        <text x="465" y="419" fill="#94a3b8" font-size="8">MatchingEngine write</text>
+        <line x1="50" y1="445" x2="100" y2="445" stroke="#fb7185" stroke-width="2" marker-end="url(#arrow-rose)"/>
+        <text x="115" y="449" fill="#94a3b8" font-size="8">ClearingWorker write</text>
+        <line x1="280" y1="445" x2="330" y2="445" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+        <text x="345" y="449" fill="#94a3b8" font-size="8">CQ read</text>
+        <line x1="430" y1="445" x2="480" y2="445" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrow-violet)"/>
+        <text x="495" y="449" fill="#94a3b8" font-size="8">Async / Snapshot</text>
+        <line x1="50" y1="475" x2="100" y2="475" stroke="#64748b" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="115" y="479" fill="#94a3b8" font-size="8">Storage persistence</text>
+
+        <!-- Batch processing note -->
+        <rect x="760" y="370" width="600" height="140" rx="6" fill="rgba(15,23,42,0.8)" stroke="#334155" stroke-width="1"/>
+        <text x="780" y="395" fill="white" font-size="10" font-weight="600">Batch Processing Pattern (All Workers)</text>
+        <text x="780" y="420" fill="#34d399" font-size="8" font-weight="600">1. Read batch</text>
+        <text x="780" y="435" fill="#94a3b8" font-size="7.5">cq.readBatch(maxSize, timeoutMs)</text>
+        <text x="780" y="455" fill="#fbbf24" font-size="8" font-weight="600">2. Process in memory</text>
+        <text x="780" y="470" fill="#94a3b8" font-size="7.5">Single-threaded, no locking needed</text>
+        <text x="780" y="490" fill="#fb7185" font-size="8" font-weight="600">3. Write downstream CQ + Complete futures</text>
+        <text x="1060" y="420" fill="#22d3ee" font-size="8" font-weight="600">AccountWorker: 50/batch, 1ms timeout</text>
+        <text x="1060" y="440" fill="#fbbf24" font-size="8" font-weight="600">MatchingEngine: 50/batch, 1ms timeout</text>
+        <text x="1060" y="460" fill="#fb7185" font-size="8" font-weight="600">ClearingWorker: 100/batch, 1ms timeout</text>
+      </svg>
+    </div>
+
+    <!-- ==================== Flow 1: HTTP Order ==================== -->
+    <h2 class="section-title">Flow 1: HTTP Order Request (Synchronous Path)</h2>
+    <div class="flow-section">
+      <div class="flow-title">
+        <span class="flow-icon" style="background:rgba(34,211,238,0.15);color:#22d3ee;">1</span>
+        <span class="flow-label">HTTP POST /api/orders -- Synchronous Freeze</span>
+        <span class="flow-tag" style="background:rgba(34,211,238,0.15);color:#22d3ee;">SYNC</span>
+      </div>
+      <div class="flow-diagram">
+        <div class="flow-step theme-cyan">
+          <div class="step-rail"><div class="step-dot">1</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">Tomcat Virtual Thread <span class="step-thread-tag">HTTP</span></div>
+            <div class="step-action">Receive <code>HTTP POST /api/orders</code> request</div>
+          </div>
+        </div>
+        <div class="flow-step theme-cyan">
+          <div class="step-rail"><div class="step-dot">2</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">Tomcat Virtual Thread <span class="step-thread-tag">VALIDATE</span></div>
+            <div class="step-action">Parameter validation &rarr; Trading phase check (volatile read) &rarr; Price limit check &rarr; Idempotent check (<code>idempotencyKey</code>)</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(34,211,238,0.1);color:#22d3ee;">Layer 1: HTTP idempotencyKey</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-cyan">
+          <div class="step-rail"><div class="step-dot">3</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">Tomcat Virtual Thread <span class="step-thread-tag">WRITE CQ</span></div>
+            <div class="step-action">Generate <code>orderId</code> (Snowflake) &rarr; Create <code>CompletableFuture</code> &rarr; Write <code>account_input CQ</code> (NEW_ORDER)</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">account_input.cq4</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-cyan">
+          <div class="step-rail"><div class="step-dot">4</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">Tomcat Virtual Thread <span class="step-thread-tag">WAIT</span></div>
+            <div class="step-action"><code>future.orTimeout(5, TimeUnit.SECONDS)</code> -- Block virtual thread until AccountWorker completes freeze</div>
+            <div class="step-detail">Returns <code>orderId + status=PENDING</code> on success, or TimeoutException on failure</div>
+          </div>
+        </div>
+      </div>
+      <div class="info-box cyan">
+        <div class="info-box-title">CompletableFuture Synchronization</div>
+        <div class="info-box-item">HTTP thread writes NEW_ORDER to <code>account_input.cq4</code> with attached <code>CompletableFuture</code></div>
+        <div class="info-box-item">Virtual thread blocks on <code>future.orTimeout(5s)</code> -- lightweight parking, no OS thread waste</div>
+        <div class="info-box-item">AccountWorker batch-completes all futures after processing: <code>future.complete(result)</code></div>
+        <div class="info-box-item">Timeout &rarr; order may still be processed; consistency guaranteed by idempotency</div>
+      </div>
+    </div>
+
+    <!-- ==================== Flow 2: AccountWorker Batch ==================== -->
+    <h2 class="section-title">Flow 2: AccountWorker Batch Processing (Phase 2)</h2>
+    <div class="flow-section">
+      <div class="flow-title">
+        <span class="flow-icon" style="background:rgba(52,211,153,0.15);color:#34d399;">2</span>
+        <span class="flow-label">AccountWorker -- Freeze/Unfreeze/Settle/Deposit</span>
+        <span class="flow-tag" style="background:rgba(52,211,153,0.15);color:#34d399;">1 THREAD</span>
+        <span class="flow-tag" style="background:rgba(251,191,36,0.15);color:#fbbf24;">BATCH 50</span>
+      </div>
+      <div class="flow-diagram">
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">1</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">READ BATCH</span></div>
+            <div class="step-action">Batch read from <code>account_input CQ</code> (max 50 events, wait 1ms)</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">account_input.cq4</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">2</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">PROCESS</span></div>
+            <div class="step-action">Batch process events by type:</div>
+            <div class="step-sub">
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>INSTRUMENT_INIT</code>: Store into InstrumentStore</div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>PHASE_CHANGE</code>: Update <code>currentPhase</code> volatile variable</div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>DEPOSIT</code>: <code>balance += amount</code>, <code>available += amount</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>NEW_ORDER</code>: Freeze funds/position (ConcurrentHashMap in-memory):
+                <div style="margin-left:1rem;margin-top:0.25rem">
+                  <div style="color:#fbbf24;font-size:0.72rem">Market buy: frozen = limit_price x qty + commission(ceil)</div>
+                  <div style="color:#fbbf24;font-size:0.72rem">Limit buy: frozen = price x qty + commission(ceil)</div>
+                  <div style="color:#fbbf24;font-size:0.72rem">Sell: freeze position quantity</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">3</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">PENDING-MUTATIONS</span></div>
+            <div class="step-action">Delayed apply pattern -- collect mutations to <code>pending-mutations</code>, apply only after CQ write succeeds</div>
+            <div class="step-detail">If CQ write fails, mutations are discarded; guarantees consistency between memory and CQ</div>
+          </div>
+        </div>
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">4</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">WRITE CQ</span></div>
+            <div class="step-action">Batch write to <code>matching_input CQ</code> + <code>account_output CQ</code></div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">matching_input.cq4</span>
+              <span class="store-tag" style="background:rgba(167,139,250,0.1);color:#a78bfa;">account_output.cq4</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">5</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">COMPLETE</span></div>
+            <div class="step-action">Batch <code>CompletableFuture.complete()</code> + WebSocket push (order_update, account_update)</div>
+          </div>
+        </div>
+      </div>
+      <div class="info-box green">
+        <div class="info-box-title">Account Invariants</div>
+        <div class="info-box-item"><code>balance == available + frozen</code></div>
+        <div class="info-box-item"><code>frozen == marginFrozen + orderFrozen</code></div>
+        <div class="info-box-item"><code>|position.quantity| == available + frozen + t1Locked</code></div>
+        <div class="info-box-item">Single-threaded processing guarantees no concurrent modification -- no locking on ConcurrentHashMap needed</div>
+      </div>
+    </div>
+
+    <!-- ==================== Flow 3: MatchingEngine ==================== -->
+    <h2 class="section-title">Flow 3: MatchingEngine Batch Matching (Phase 3)</h2>
+    <div class="flow-section">
+      <div class="flow-title">
+        <span class="flow-icon" style="background:rgba(251,191,36,0.15);color:#fbbf24;">3</span>
+        <span class="flow-label">MatchingEngine -- Price-Time Priority Matching</span>
+        <span class="flow-tag" style="background:rgba(251,191,36,0.15);color:#fbbf24;">1 THREAD</span>
+        <span class="flow-tag" style="background:rgba(251,191,36,0.15);color:#fbbf24;">BATCH 50</span>
+      </div>
+      <div class="flow-diagram">
+        <div class="flow-step theme-amber">
+          <div class="step-rail"><div class="step-dot">1</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">MatchingEngine Thread <span class="step-thread-tag">READ BATCH</span></div>
+            <div class="step-action">Batch read from <code>matching_input CQ</code> (max 50 events, wait 1ms)</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">matching_input.cq4</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-amber">
+          <div class="step-rail"><div class="step-dot">2</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">MatchingEngine Thread <span class="step-thread-tag">GROUP</span></div>
+            <div class="step-action">Group events by <code>symbol</code> for sequential processing per symbol</div>
+          </div>
+        </div>
+        <div class="flow-step theme-amber">
+          <div class="step-rail"><div class="step-dot">3</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">MatchingEngine Thread <span class="step-thread-tag">MATCH</span></div>
+            <div class="step-action">Process events by type:</div>
+            <div class="step-sub">
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>INSTRUMENT_INIT</code>: Store into memory</div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>NEW_ORDER</code>: Idempotent check (<code>processed_order_ids</code>) &rarr; Phase check (volatile) &rarr; Add to OrderBook &rarr; Match</div>
+              <div class="step-sub-item" style="margin-left:1rem;margin-top:0.25rem">
+                <div style="color:#fbbf24;font-size:0.72rem"><code>LIMIT</code>: Price-time priority; unfilled stays in OrderBook</div>
+                <div style="color:#fbbf24;font-size:0.72rem"><code>MARKET</code>: Match with best counterparty; unfilled immediately cancelled (<code>CANCEL_SUCCESS</code>)</div>
+                <div style="color:#fbbf24;font-size:0.72rem"><code>FAK</code>: Fill what can be filled at limit price, cancel remainder</div>
+                <div style="color:#fbbf24;font-size:0.72rem"><code>FOK</code>: All-or-nothing; if fillable_qty &lt; quantity, cancel entire order</div>
+              </div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>CANCEL_ORDER</code>: Remove from OrderBook &rarr; <code>CANCEL_SUCCESS</code> / <code>CANCEL_REJECT</code></div>
+            </div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(52,211,153,0.1);color:#34d399;">Layer 2: processed_order_ids</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-amber">
+          <div class="step-rail"><div class="step-dot">4</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">MatchingEngine Thread <span class="step-thread-tag">WRITE CQ</span></div>
+            <div class="step-action">Batch write to <code>matching_output CQ</code> -- TRADE events MUST precede CANCEL_SUCCESS in same batch</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">matching_output.cq4</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-amber">
+          <div class="step-rail"><div class="step-dot">5</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">MatchingEngine Thread <span class="step-thread-tag">MARKET DATA</span></div>
+            <div class="step-action">Five-level quote push (every 3s) + K-line update (real-time)</div>
+          </div>
+        </div>
+      </div>
+      <div class="info-box amber">
+        <div class="info-box-title">Order Type Matching Rules</div>
+        <div class="info-box-item"><code>LIMIT</code> -- Price priority first, then time priority; unfilled remains in OrderBook</div>
+        <div class="info-box-item"><code>MARKET</code> -- Match with best counterparty immediately; unfilled portion cancelled (CANCEL_SUCCESS)</div>
+        <div class="info-box-item"><code>FAK</code> (Fill and Kill) -- Fill what's available at limit price, cancel the rest</div>
+        <div class="info-box-item"><code>FOK</code> (Fill or Kill) -- If entire quantity cannot be filled, cancel the entire order</div>
+        <div class="info-box-item">TRADE events are always written before CANCEL_SUCCESS in the same batch to maintain causal order</div>
+      </div>
+    </div>
+
+    <!-- ==================== Flow 4: ClearingWorker ==================== -->
+    <h2 class="section-title">Flow 4: ClearingWorker Batch Clearing (Phase 4)</h2>
+    <div class="flow-section">
+      <div class="flow-title">
+        <span class="flow-icon" style="background:rgba(251,113,133,0.15);color:#fb7185;">4</span>
+        <span class="flow-label">ClearingWorker -- Commission Calculation & Settlement Event Generation</span>
+        <span class="flow-tag" style="background:rgba(251,113,133,0.15);color:#fb7185;">1 THREAD</span>
+        <span class="flow-tag" style="background:rgba(251,191,36,0.15);color:#fbbf24;">BATCH 100</span>
+      </div>
+      <div class="flow-diagram">
+        <div class="flow-step theme-rose">
+          <div class="step-rail"><div class="step-dot">1</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">ClearingWorker Thread <span class="step-thread-tag">READ BATCH</span></div>
+            <div class="step-action">Batch read from <code>matching_output CQ</code> (max 100 events, wait 1ms)</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">matching_output.cq4</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-rose">
+          <div class="step-rail"><div class="step-dot">2</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">ClearingWorker Thread <span class="step-thread-tag">PROCESS</span></div>
+            <div class="step-action">Process events by type:</div>
+            <div class="step-sub">
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>ORDER_UPDATE(status=NEW)</code>: Update order PENDING&rarr;NEW, WebSocket push</div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>TRADE</code>: Update buy/sell <code>filledQuantity</code> &rarr; Calculate commission(<code>floor</code>) &rarr; Calculate frozenAmountUsed(<code>ceil</code>) &rarr; Generate <code>SETTLEMENT x 2</code> &rarr; Write <code>account_settlement CQ</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>CANCEL_SUCCESS</code>: Generate <code>UNFREEZE</code> &rarr; Write <code>account_settlement CQ</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> <code>CANCEL_REJECT(PENDING_ORDER_NOT_IN_ORDERBOOK)</code>: If order status is PENDING/NEW &rarr; Generate <code>UNFREEZE</code></div>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-rose">
+          <div class="step-rail"><div class="step-dot">3</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">ClearingWorker Thread <span class="step-thread-tag">NOTE</span></div>
+            <div class="step-action">No idempotency check in ClearingWorker -- idempotency is guaranteed by AccountWorker downstream</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(52,211,153,0.1);color:#34d399;">Layer 3: AccountWorker processed_trade_ids</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="info-box rose">
+        <div class="info-box-title">Commission & Frozen Amount Rounding</div>
+        <div class="info-box-item">Commission: <code>floor()</code> -- rounded down, customer-friendly</div>
+        <div class="info-box-item">Frozen amount used: <code>ceil()</code> -- rounded up, ensures sufficient frozen funds for settlement</div>
+        <div class="info-box-item">Difference between frozen and used = refund to <code>available</code></div>
+        <div class="info-box-item">Each TRADE generates 2 SETTLEMENT events: one for buyer, one for seller</div>
+      </div>
+    </div>
+
+    <!-- ==================== Flow 5: AccountWorker Settlement/Unfreeze ==================== -->
+    <h2 class="section-title">Flow 5: AccountWorker Settlement & Unfreeze</h2>
+    <div class="flow-section">
+      <div class="flow-title">
+        <span class="flow-icon" style="background:rgba(52,211,153,0.15);color:#34d399;">5</span>
+        <span class="flow-label">AccountWorker -- Settlement Transfer & Unfreeze (Same Thread)</span>
+        <span class="flow-tag" style="background:rgba(52,211,153,0.15);color:#34d399;">1 THREAD</span>
+      </div>
+      <div class="flow-diagram">
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">1</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">READ</span></div>
+            <div class="step-action">Batch read from <code>account_settlement CQ</code></div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">account_settlement.cq4</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">2</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">SETTLE</span></div>
+            <div class="step-action">Process <code>SETTLEMENT</code>:</div>
+            <div class="step-sub">
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> Idempotent check: <code>settlementId = tradeId + "_" + orderId</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> Buyer: <code>frozen -= frozenAmountUsed</code>, <code>balance -= total_deduction</code>, <code>available += refund</code>, <code>position.quantity += qty</code>, <code>position.t1Locked += qty</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> Seller: <code>position.frozen -= qty</code>, <code>position.quantity -= qty</code>, <code>balance += net_income</code>, <code>available += net_income</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> Verify invariant: <code>balance == available + frozen</code></div>
+            </div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(52,211,153,0.1);color:#34d399;">Layer 3: processed_trade_ids</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">3</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">UNFREEZE</span></div>
+            <div class="step-action">Process <code>UNFREEZE</code>:</div>
+            <div class="step-sub">
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> Idempotent check: <code>unfreezeId = orderId</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> Buy order: <code>available += unfreezeAmount</code>, <code>frozen -= unfreezeAmount</code>, <code>orderFrozen -= unfreezeAmount</code></div>
+              <div class="step-sub-item"><span class="bullet">&#8226;</span> Sell order: <code>position.available += unfreezeQty</code>, <code>position.frozen -= unfreezeQty</code></div>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-green">
+          <div class="step-rail"><div class="step-dot">4</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">OUTPUT</span></div>
+            <div class="step-action">Batch write to <code>account_output CQ</code> &rarr; WebSocket push (position_update, account_update)</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(167,139,250,0.1);color:#a78bfa;">account_output.cq4</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== Flow 6: Cancel Full Path ==================== -->
+    <h2 class="section-title">Flow 6: Cancel Order Full Path</h2>
+    <div class="flow-section">
+      <div class="flow-title">
+        <span class="flow-icon" style="background:rgba(167,139,250,0.15);color:#a78bfa;">6</span>
+        <span class="flow-label">Cancel Order -- Cross-Thread Lifecycle</span>
+        <span class="flow-tag" style="background:rgba(167,139,250,0.15);color:#a78bfa;">ASYNC</span>
+      </div>
+      <div class="flow-diagram">
+        <div class="flow-step theme-violet">
+          <div class="step-rail"><div class="step-dot">1</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">HTTP Virtual Thread <span class="step-thread-tag">HTTP</span></div>
+            <div class="step-action">Validate <code>orderId</code> &rarr; Write <code>CANCEL_ORDER</code> to <code>account_input CQ</code> &rarr; Return PENDING_CANCEL</div>
+          </div>
+        </div>
+        <div class="flow-step theme-violet">
+          <div class="step-rail"><div class="step-dot">2</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">FORWARD</span></div>
+            <div class="step-action">All <code>CANCEL_ORDER</code> events forwarded directly to <code>matching_input CQ</code> (no freeze/unfreeze in this phase)</div>
+          </div>
+        </div>
+        <div class="flow-step theme-violet">
+          <div class="step-rail"><div class="step-dot">3</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">MatchingEngine Thread <span class="step-thread-tag">REMOVE</span></div>
+            <div class="step-action">Order in OrderBook &rarr; Remove &rarr; <code>CANCEL_SUCCESS</code>; Order not in OrderBook &rarr; <code>CANCEL_REJECT</code></div>
+          </div>
+        </div>
+        <div class="flow-step theme-violet">
+          <div class="step-rail"><div class="step-dot">4</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">ClearingWorker Thread <span class="step-thread-tag">GENERATE</span></div>
+            <div class="step-action"><code>CANCEL_SUCCESS</code> &rarr; Generate <code>UNFREEZE</code> &rarr; Write to <code>account_settlement CQ</code></div>
+          </div>
+        </div>
+        <div class="flow-step theme-violet">
+          <div class="step-rail"><div class="step-dot">5</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Thread <span class="step-thread-tag">UNFREEZE</span></div>
+            <div class="step-action">Unfreeze funds/position &rarr; Update order status to CANCELLED &rarr; WebSocket push</div>
+          </div>
+        </div>
+      </div>
+      <div class="info-box violet">
+        <div class="info-box-title">Cancel Order Design Notes</div>
+        <div class="info-box-item">Cancel requests go through the same CQ pipeline as new orders -- guarantees ordering</div>
+        <div class="info-box-item">AccountWorker does NOT unfreeze on CANCEL_ORDER -- unfreeze only happens after CANCEL_SUCCESS from MatchingEngine</div>
+        <div class="info-box-item"><code>CANCEL_REJECT(PENDING_ORDER_NOT_IN_ORDERBOOK)</code>: if order is still PENDING/NEW, generate UNFREEZE to release frozen funds</div>
+      </div>
+    </div>
+
+    <!-- ==================== Flow 7: Four-Phase Recovery ==================== -->
+    <h2 class="section-title">Flow 7: Four-Phase Recovery Process</h2>
+    <div class="flow-section">
+      <div class="flow-title">
+        <span class="flow-icon" style="background:rgba(251,146,60,0.15);color:#fb923c;">7</span>
+        <span class="flow-label">JVM Restart Recovery -- RPO = 0 Guaranteed</span>
+        <span class="flow-tag" style="background:rgba(52,211,153,0.15);color:#34d399;">RPO=0</span>
+      </div>
+      <div class="flow-diagram">
+        <div class="flow-step theme-orange">
+          <div class="step-rail"><div class="step-dot">1</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Phase 1 <span class="step-thread-tag">SNAPSHOT + REPLAY</span></div>
+            <div class="step-action">Load H2 Instrument data &rarr; Load <code>account_snapshot_{idx}.dat</code> + .checksum (MD5 verify) &rarr; Generate idempotent set &rarr; <code>replay_mode = true</code> &rarr; Replay <code>account_input CQ</code> from index+1</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">account_snapshot_{account_input_cq_index}.dat</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-orange">
+          <div class="step-rail"><div class="step-dot">2</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">MatchingEngine <span class="step-thread-tag">SNAPSHOT + REPLAY</span></div>
+            <div class="step-action">Load <code>matching_snapshot_{idx}.dat</code> + .checksum (MD5 verify) &rarr; Restore OrderBook (TreeMap) &rarr; Generate idempotent set (<code>processed_order_ids</code>) &rarr; <code>replay_mode = true</code> &rarr; Replay <code>matching_input CQ</code> from index+1</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,146,60,0.1);color:#fb923c;">matching_snapshot_{matching_input_cq_index}.dat</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-orange">
+          <div class="step-rail"><div class="step-dot">3</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">ClearingWorker <span class="step-thread-tag">POSITION + REPLAY</span></div>
+            <div class="step-action">Read <code>clearing_position.dat</code> &rarr; Roll back <code>matching_output</code> to last processed index &rarr; Replay <code>matching_output CQ</code> (no idempotency check)</div>
+            <div class="step-detail">
+              <span class="store-tag" style="background:rgba(251,113,133,0.1);color:#fb7185;">clearing_position.dat</span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step theme-orange">
+          <div class="step-rail"><div class="step-dot">4</div><div class="step-line"></div></div>
+          <div class="step-body">
+            <div class="step-thread">AccountWorker Phase 2 <span class="step-thread-tag">SETTLEMENT REPLAY</span></div>
+            <div class="step-action">Generate idempotent set (<code>processed_trade_ids</code>) &rarr; Replay <code>account_settlement CQ</code> &rarr; Settlement transfer + unfreeze (idempotent)</div>
+          </div>
+        </div>
+      </div>
+      <div class="info-box orange">
+        <div class="info-box-title">RPO = 0 Guarantee Mechanism</div>
+        <div class="info-box-item">CQ <code>writeMode=SYNC</code>: every write is fsync'd to disk before acknowledgment</div>
+        <div class="info-box-item">Snapshot files use atomic rename: write to <code>.tmp</code> &rarr; <code>rename</code> to final name</div>
+        <div class="info-box-item">Each snapshot has a companion <code>.checksum</code> file with MD5 hash for integrity verification</div>
+        <div class="info-box-item">Recovery replays from snapshot index + 1 through all remaining CQ events</div>
+        <div class="info-box-item">Idempotent processing during replay prevents double-application of events</div>
+      </div>
+    </div>
+
+    <!-- ==================== Thread Pool Summary ==================== -->
+    <h2 class="section-title">Thread Pool Summary</h2>
+    <div class="flow-section">
+      <div class="pool-section pool-cyan">
+        <div class="pool-title">IO Threads</div>
+        <div class="pool-grid">
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#22d3ee;">HTTP Virtual Threads</div>
+            <div class="pool-node-count">Unlimited (virtual)</div>
+            <div class="pool-node-desc">REST API request handling<br>CompletableFuture.orTimeout(5s)<br>Write to account_input CQ</div>
+          </div>
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#22d3ee;">WebSocket EventLoop</div>
+            <div class="pool-node-count">8 threads (Netty)</div>
+            <div class="pool-node-desc">Real-time push (market data, order, trade)<br>Connection management<br>Ping/pong heartbeat (30s)</div>
+          </div>
+        </div>
+      </div>
+      <div class="pool-section pool-green">
+        <div class="pool-title">Core Business Threads</div>
+        <div class="pool-grid">
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#34d399;">AccountWorker</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">Freeze/unfreeze funds &amp; positions<br>Settlement transfer (buy/sell)<br>Deposit processing<br>Batch: 50 events / 1ms timeout<br>CF.complete() + WS push</div>
+          </div>
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#fbbf24;">MatchingEngine</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">Price-time priority matching<br>LIMIT/MARKET/FAK/FOK<br>OrderBook (TreeMap) management<br>5-level quote + K-line push<br>Batch: 50 events / 1ms timeout</div>
+          </div>
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#fb7185;">ClearingWorker</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">Commission calculation (floor)<br>Frozen amount calculation (ceil)<br>Generate SETTLEMENT/UNFREEZE events<br>No idempotency check (AccountWorker handles it)<br>Batch: 100 events / 1ms timeout</div>
+          </div>
+        </div>
+      </div>
+      <div class="pool-section pool-violet">
+        <div class="pool-title">Auxiliary Threads</div>
+        <div class="pool-grid">
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#a78bfa;">SnapshotWorker</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">Write SNAPSHOT event to CQ every 60s<br>Trigger Worker snapshots<br>Atomic rename + MD5 checksum</div>
+          </div>
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#a78bfa;">PhaseManager</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">Trading phase switching<br>Write PHASE_CHANGE to CQ<br>Update volatile currentPhase</div>
+          </div>
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#a78bfa;">RiskMonitor</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">Risk monitoring<br>Position limit checks<br>Alert generation</div>
+          </div>
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#a78bfa;">LifecycleManager</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">System lifecycle management<br>Graceful shutdown coordination<br>Worker start/stop ordering</div>
+          </div>
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#a78bfa;">AsyncPersistence</div>
+            <div class="pool-node-count">1 thread</div>
+            <div class="pool-node-desc">H2 async batch write<br>History queries only<br>Not in main trading path</div>
+          </div>
+        </div>
+      </div>
+      <div class="info-box cyan">
+        <div class="info-box-title">Total Thread Count: 15+</div>
+        <div class="info-box-item">HTTP Virtual Threads: unlimited (lightweight, no OS thread per connection)</div>
+        <div class="info-box-item">WebSocket EventLoop: 8</div>
+        <div class="info-box-item">Core workers: 3 (AccountWorker + MatchingEngine + ClearingWorker)</div>
+        <div class="info-box-item">Auxiliary: 5 (SnapshotWorker + PhaseManager + RiskMonitor + LifecycleManager + AsyncPersistence)</div>
+      </div>
+    </div>
+
+    <!-- ==================== CQ Storage Structure ==================== -->
+    <h2 class="section-title">CQ Storage Structure (V12)</h2>
+    <div class="flow-section">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Queue File</th>
+            <th>Event Types</th>
+            <th>Producer</th>
+            <th>Consumer</th>
+            <th>Batch Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>account_input.cq4</code></td>
+            <td>NEW_ORDER / CANCEL_ORDER / DEPOSIT / SNAPSHOT / PHASE_CHANGE / INSTRUMENT_INIT</td>
+            <td style="color:#22d3ee;">HTTP Virtual Threads<br>PhaseManager<br>SnapshotWorker</td>
+            <td style="color:#34d399;">AccountWorker</td>
+            <td>50</td>
+          </tr>
+          <tr>
+            <td><code>account_output.cq4</code></td>
+            <td>FREEZE / UNFREEZE / BALANCE_CHANGE / POSITION_CHANGE</td>
+            <td style="color:#34d399;">AccountWorker</td>
+            <td style="color:#a78bfa;">AsyncPersistence<br>(H2 write)</td>
+            <td>--</td>
+          </tr>
+          <tr>
+            <td><code>matching_input.cq4</code></td>
+            <td>NEW_ORDER / CANCEL_ORDER / SNAPSHOT / INSTRUMENT_INIT</td>
+            <td style="color:#34d399;">AccountWorker</td>
+            <td style="color:#fbbf24;">MatchingEngine</td>
+            <td>50</td>
+          </tr>
+          <tr>
+            <td><code>matching_output.cq4</code></td>
+            <td>ORDER_UPDATE / TRADE / CANCEL_SUCCESS / CANCEL_REJECT</td>
+            <td style="color:#fbbf24;">MatchingEngine</td>
+            <td style="color:#fb7185;">ClearingWorker</td>
+            <td>100</td>
+          </tr>
+          <tr>
+            <td><code>account_settlement.cq4</code></td>
+            <td>SETTLEMENT / UNFREEZE</td>
+            <td style="color:#fb7185;">ClearingWorker</td>
+            <td style="color:#34d399;">AccountWorker (Phase 2)</td>
+            <td>50</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== Snapshot Files ==================== -->
+    <h2 class="section-title">Snapshot Files (V12)</h2>
+    <div class="flow-section">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>File Pattern</th>
+            <th>Content</th>
+            <th>Writer</th>
+            <th>Atomicity</th>
+            <th>Recovery Usage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>account_snapshot_{account_input_cq_index}.dat</code></td>
+            <td>Account states, positions, orders (ConcurrentHashMap dump)</td>
+            <td style="color:#34d399;">AccountWorker</td>
+            <td>tmp &rarr; rename + .checksum (MD5)</td>
+            <td>Load to memory &rarr; replay account_input CQ from index+1</td>
+          </tr>
+          <tr>
+            <td><code>matching_snapshot_{matching_input_cq_index}.dat</code></td>
+            <td>OrderBook (TreeMap), processed_order_ids</td>
+            <td style="color:#fbbf24;">MatchingEngine</td>
+            <td>tmp &rarr; rename + .checksum (MD5)</td>
+            <td>Load to memory &rarr; replay matching_input CQ from index+1</td>
+          </tr>
+          <tr>
+            <td><code>clearing_position.dat</code></td>
+            <td>ClearingWorker position index in matching_output CQ</td>
+            <td style="color:#fb7185;">ClearingWorker</td>
+            <td>tmp &rarr; rename (atomic)</td>
+            <td>Roll back matching_output to index &rarr; replay</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== Three-Layer Idempotency ==================== -->
+    <h2 class="section-title">Three-Layer Idempotency Model</h2>
+    <div class="flow-section">
+      <div class="pool-section pool-cyan">
+        <div class="pool-title">Layer 1: HTTP Idempotency Key</div>
+        <div class="pool-grid">
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#22d3ee;">idempotencyKey</div>
+            <div class="pool-node-count">HTTP Request Layer</div>
+            <div class="pool-node-desc">Client-generated unique key per request<br>Prevents duplicate HTTP submissions<br>Checked before writing to CQ</div>
+          </div>
+        </div>
+      </div>
+      <div class="pool-section pool-amber">
+        <div class="pool-title">Layer 2: MatchingEngine processed_order_ids</div>
+        <div class="pool-grid">
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#fbbf24;">processed_order_ids</div>
+            <div class="pool-node-count">MatchingEngine Layer</div>
+            <div class="pool-node-desc">Set of order IDs already processed<br>Prevents duplicate order matching during replay<br>Stale entries evicted on snapshot</div>
+          </div>
+        </div>
+      </div>
+      <div class="pool-section pool-green">
+        <div class="pool-title">Layer 3: AccountWorker processed_trade_ids</div>
+        <div class="pool-grid">
+          <div class="pool-node">
+            <div class="pool-node-name" style="color:#34d399;">processed_trade_ids / settlementId / unfreezeId</div>
+            <div class="pool-node-count">AccountWorker Layer</div>
+            <div class="pool-node-desc"><code>settlementId = tradeId + "_" + orderId</code><br><code>unfreezeId = orderId</code><br>Prevents duplicate settlement/unfreeze<br>Ultimate consistency guarantee</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div> HTTP / IO Threads</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#34d399;"></div> AccountWorker Thread</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24;"></div> MatchingEngine Thread</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb7185;"></div> ClearingWorker Thread</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a78bfa;"></div> Auxiliary Threads</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb923c;"></div> Chronicle Queue (CQ)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #64748b;"></div> Snapshot Files</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(251,146,60,0.3);border:1.5px solid #fb923c;"></div> V12 Change</div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      HFT Trading System V12 -- Thread Workflow & Data Flow Diagram &middot; Five CQ Queues &middot; Batch Processing &middot; Three-Layer Idempotent &middot; Four-Phase Recovery &middot; RPO=0
+    </div>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#1a1a2e', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = 'Copied!';
+      } catch (e) { btn.textContent = 'Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = 'Processing...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#1a1a2e', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'thread-workflow-v12.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = 'Done!';
+      } catch (e) { btn.textContent = 'Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = 'Processing...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#1a1a2e', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('thread-workflow-v12.pdf');
+        btn.textContent = 'Done!';
+      } catch (e) { btn.textContent = 'Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
 </body>
 </html>

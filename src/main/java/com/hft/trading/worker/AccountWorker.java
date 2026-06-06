@@ -406,7 +406,7 @@ public class AccountWorker implements Runnable {
     /**
      * 处理 PHASE_CHANGE 事件
      */
-    private ProcessResult processPhaseChange(AccountInputEvent event) {
+    public ProcessResult processPhaseChange(AccountInputEvent event) {
         TradingPhase newPhase = event.getPhase();
         logger.info("Processing PHASE_CHANGE: {} -> {}", currentPhase, newPhase);
 
@@ -649,6 +649,8 @@ public class AccountWorker implements Runnable {
     public long getLastProcessedIndex() { return lastProcessedIndex; }
 
     public void setReplayMode(boolean replayMode) { this.replayMode = replayMode; }
+
+    public void setLastProcessedIndex(long index) { this.lastProcessedIndex = index; }
 
     // ==================== 内部类 ====================
 

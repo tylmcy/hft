@@ -488,6 +488,8 @@ public class MatchingEngineWorker implements Runnable {
 
     public void setReplayMode(boolean replayMode) { this.replayMode = replayMode; }
 
+    public void setLastProcessedIndex(long index) { this.lastProcessedIndex = index; }
+
     /**
      * 获取撮合引擎 Map
      */

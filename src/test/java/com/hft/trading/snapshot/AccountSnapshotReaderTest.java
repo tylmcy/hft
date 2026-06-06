@@ -3,8 +3,10 @@ package com.hft.trading.snapshot;
 import com.hft.trading.model.Account;
 import com.hft.trading.model.AccountStatus;
 import com.hft.trading.model.Position;
+import com.hft.trading.service.AlertService;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryPositionStore;
+import com.hft.trading.util.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,8 +35,9 @@ class AccountSnapshotReaderTest {
 
     @BeforeEach
     void setUp() {
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService);
+        positionStore = new InMemoryPositionStore(alertService);
         writer = new AccountSnapshotWriter(accountStore, positionStore, tempDir.toString() + "/");
         reader = new AccountSnapshotReader(accountStore, positionStore);
     }
@@ -76,8 +79,9 @@ class AccountSnapshotReaderTest {
         String snapshotFile = tempDir.resolve("account_snapshot_" + cqIndex + ".dat").toString();
 
         // 清空存储
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService2 = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService2);
+        positionStore = new InMemoryPositionStore(alertService2);
         reader = new AccountSnapshotReader(accountStore, positionStore);
 
         // When: 读取快照
@@ -180,8 +184,9 @@ class AccountSnapshotReaderTest {
         String snapshotFile = tempDir.resolve("account_snapshot_" + cqIndex + ".dat").toString();
 
         // 清空存储
-        accountStore = new InMemoryAccountStore();
-        positionStore = new InMemoryPositionStore();
+        AlertService alertService2 = TestUtils.createTestAlertService();
+        accountStore = new InMemoryAccountStore(alertService2);
+        positionStore = new InMemoryPositionStore(alertService2);
         reader = new AccountSnapshotReader(accountStore, positionStore);
 
         // When: 读取快照

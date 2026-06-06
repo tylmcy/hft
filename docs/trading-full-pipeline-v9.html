@@ -1,651 +1,616 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HFT交易系统完整链路数据流图 V9</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
-    .container { max-width: 1800px; margin: 0 auto; }
-    .header { margin-bottom: 2rem; }
-    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
-    .pulse-dot { width: 12px; height: 12px; background: #34d399; border-radius: 50%; animation: pulse 2s infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
-    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
-    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
-    svg { width: 100%; min-width: 1700px; display: block; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
-    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
-    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
-    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .card-dot.cyan { background: #22d3ee; }
-    .card-dot.emerald { background: #34d399; }
-    .card-dot.violet { background: #a78bfa; }
-    .card-dot.amber { background: #fbbf24; }
-    .card-dot.rose { background: #fb7185; }
-    .card-dot.orange { background: #fb923c; }
-    .card h3 { font-size: 0.875rem; font-weight: 600; }
-    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
-    .card li { margin-bottom: 0.375rem; }
-    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
-    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
-    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
-    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
-    .toolbar-actions { display: none; gap: 0.5rem; }
-    .toolbar.expanded .toolbar-actions { display: flex; }
-    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
-    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HFT Trading System V12 - Full Trading Pipeline</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    color: #e2e8f0;
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    background-image:
+      linear-gradient(rgba(34,211,238,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,211,238,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .container { max-width: 1860px; margin: 0 auto; padding: 24px 16px 40px; }
+  .header { text-align: center; margin-bottom: 20px; }
+  .header h1 {
+    font-size: 28px; font-weight: 700; letter-spacing: 1px;
+    background: linear-gradient(135deg, #22d3ee, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header .subtitle { font-size: 13px; color: #64748b; margin-top: 6px; letter-spacing: 0.5px; }
+
+  .toolbar {
+    display: flex; gap: 10px; justify-content: center; margin-bottom: 16px;
+  }
+  .toolbar button {
+    background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.3);
+    color: #22d3ee; padding: 8px 20px; border-radius: 6px; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500;
+    transition: all 0.2s;
+  }
+  .toolbar button:hover { background: rgba(34,211,238,0.2); border-color: #22d3ee; }
+
+  .diagram-wrapper {
+    background: rgba(2,6,23,0.8);
+    border: 1px solid rgba(34,211,238,0.15);
+    border-radius: 16px;
+    padding: 16px;
+    overflow-x: auto;
+    box-shadow: 0 0 60px rgba(34,211,238,0.05);
+  }
+  .diagram-wrapper svg { display: block; margin: 0 auto; }
+
+  .info-cards {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px;
+  }
+  .info-card {
+    background: rgba(15,23,42,0.8);
+    border: 1px solid rgba(34,211,238,0.12);
+    border-radius: 12px; padding: 20px;
+    transition: border-color 0.2s;
+  }
+  .info-card:hover { border-color: rgba(34,211,238,0.3); }
+  .info-card .card-icon { font-size: 20px; margin-bottom: 8px; }
+  .info-card .card-title { font-size: 13px; font-weight: 600; color: #22d3ee; margin-bottom: 8px; }
+  .info-card .card-text { font-size: 11px; color: #94a3b8; line-height: 1.7; }
+
+  .footer {
+    text-align: center; margin-top: 32px; padding-top: 20px;
+    border-top: 1px solid rgba(34,211,238,0.08);
+    font-size: 11px; color: #475569;
+  }
+</style>
 </head>
 <body>
-  <div class="container" id="report-container">
-    <div class="header">
-      <div class="header-row">
-        <div class="pulse-dot"></div>
-        <h1>HFT交易系统完整链路数据流图 V9</h1>
-        <div class="toolbar">
-          <div class="toolbar-actions">
-            <button onclick="copyAsImage(this)">📋 Copy</button>
-            <button onclick="downloadPNG(this)">🖼️ PNG</button>
-            <button onclick="downloadPDF(this)">📄 PDF</button>
-          </div>
-          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
-        </div>
-      </div>
-      <p class="subtitle">下单→撮合→清结算 完整链路 | 批量处理100K TPS | 快照+CQ增量恢复 | 内存主存储</p>
-    </div>
-
-    <div class="diagram-container">
-      <svg viewBox="0 0 1800 1450">
-        <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b" /></marker>
-          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" /></marker>
-          <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399" /></marker>
-          <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" /></marker>
-          <marker id="arrowhead-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" /></marker>
-          <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fb923c" /></marker>
-          <marker id="arrowhead-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" /></marker>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>
-        </defs>
-
-        <rect width="100%" height="100%" fill="url(#grid)" />
-
-        <!-- Title -->
-        <text x="900" y="25" fill="white" font-size="16" font-weight="700" text-anchor="middle">完整交易链路：下单 → 撮合 → 清算 → 结算 + 批量处理 + 快照恢复</text>
-
-        <!-- Thread Labels -->
-        <rect x="50" y="45" width="380" height="25" rx="4" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="1"/>
-        <text x="240" y="62" fill="#fb7185" font-size="10" font-weight="600" text-anchor="middle">HTTP Thread (虚拟线程)</text>
-
-        <rect x="460" y="45" width="380" height="25" rx="4" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1"/>
-        <text x="650" y="62" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">AccountWorker (单线程批量)</text>
-
-        <rect x="870" y="45" width="380" height="25" rx="4" fill="rgba(8, 51, 68, 0.3)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="1060" y="62" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">MatchingEngine (单线程批量)</text>
-
-        <rect x="1280" y="45" width="380" height="25" rx="4" fill="rgba(76, 29, 149, 0.3)" stroke="#a78bfa" stroke-width="1"/>
-        <text x="1470" y="62" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">ClearingWorker (单线程批量)</text>
-
-        <!-- ==================== PHASE 1: ORDER SUBMISSION ==================== -->
-        <rect x="50" y="80" width="380" height="320" rx="12" fill="rgba(136, 19, 55, 0.05)" stroke="#fb7185" stroke-width="2"/>
-        <text x="60" y="100" fill="#fb7185" font-size="12" font-weight="700">阶段1: 下单提交 (HTTP同步)</text>
-
-        <!-- HTTP Request -->
-        <rect x="70" y="115" width="160" height="60" rx="6" fill="#0f172a"/>
-        <rect x="70" y="115" width="160" height="60" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
-        <text x="150" y="138" fill="white" font-size="10" font-weight="600" text-anchor="middle">HTTP Request</text>
-        <text x="150" y="155" fill="#94a3b8" font-size="8" text-anchor="middle">POST /api/orders</text>
-        <text x="150" y="168" fill="#fb7185" font-size="7" text-anchor="middle">{symbol,side,price,qty}</text>
-
-        <!-- Validation -->
-        <rect x="250" y="115" width="160" height="60" rx="6" fill="#0f172a"/>
-        <rect x="250" y="115" width="160" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="330" y="135" fill="white" font-size="10" font-weight="600" text-anchor="middle">参数校验</text>
-        <text x="330" y="150" fill="#94a3b8" font-size="7" text-anchor="middle">• 交易阶段检查</text>
-        <text x="330" y="162" fill="#94a3b8" font-size="7" text-anchor="middle">• 涨跌停校验</text>
-        <text x="330" y="174" fill="#94a3b8" font-size="7" text-anchor="middle">• 幂等键 putIfAbsent</text>
-
-        <!-- Idempotency Check -->
-        <rect x="70" y="190" width="160" height="50" rx="6" fill="#0f172a"/>
-        <rect x="70" y="190" width="160" height="50" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="150" y="210" fill="white" font-size="9" font-weight="600" text-anchor="middle">幂等检查</text>
-        <text x="150" y="225" fill="#a78bfa" font-size="7" text-anchor="middle">idempotency.dat</text>
-        <text x="150" y="237" fill="#34d399" font-size="7" text-anchor="middle">→ 首次请求继续</text>
-
-        <!-- Generate Order ID -->
-        <rect x="250" y="190" width="160" height="50" rx="6" fill="#0f172a"/>
-        <rect x="250" y="190" width="160" height="50" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="330" y="210" fill="white" font-size="9" font-weight="600" text-anchor="middle">生成订单ID</text>
-        <text x="330" y="225" fill="#22d3ee" font-size="7" text-anchor="middle">Snowflake</text>
-
-        <!-- Create Future -->
-        <rect x="70" y="255" width="160" height="50" rx="6" fill="#0f172a"/>
-        <rect x="70" y="255" width="160" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="150" y="275" fill="white" font-size="9" font-weight="600" text-anchor="middle">创建Future</text>
-        <text x="150" y="290" fill="#34d399" font-size="7" text-anchor="middle">CompletableFuture</text>
-        <text x="150" y="302" fill="#94a3b8" font-size="7" text-anchor="middle">orTimeout(5s)</text>
-
-        <!-- Write CQ -->
-        <rect x="250" y="255" width="160" height="50" rx="6" fill="#0f172a"/>
-        <rect x="250" y="255" width="160" height="50" rx="6" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="330" y="275" fill="white" font-size="9" font-weight="600" text-anchor="middle">写入CQ</text>
-        <text x="330" y="290" fill="#fb923c" font-size="7" text-anchor="middle">incoming_event CQ</text>
-        <text x="330" y="302" fill="#fbbf24" font-size="7" text-anchor="middle">NEW_ORDER</text>
-
-        <!-- Await -->
-        <rect x="160" y="320" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="160" y="320" width="160" height="55" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
-        <text x="240" y="340" fill="white" font-size="9" font-weight="600" text-anchor="middle">等待冻结完成</text>
-        <text x="240" y="355" fill="#fb7185" font-size="7" text-anchor="middle">future.get()</text>
-        <text x="240" y="370" fill="#94a3b8" font-size="7" text-anchor="middle">→ 返回orderId</text>
-
-        <!-- Arrows Phase 1 -->
-        <line x1="230" y1="145" x2="248" y2="145" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <line x1="150" y1="175" x2="150" y2="188" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="330" y1="175" x2="330" y2="188" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
-        <line x1="230" y1="280" x2="248" y2="280" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-        <line x1="150" y1="305" x2="150" y2="318" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead-rose)"/>
-        <line x1="330" y1="305" x2="330" y2="340" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead-rose)"/>
-
-        <!-- ==================== PHASE 2: ACCOUNT WORKER (BATCH) ==================== -->
-        <rect x="460" y="80" width="380" height="320" rx="12" fill="rgba(6, 78, 59, 0.05)" stroke="#34d399" stroke-width="2"/>
-        <text x="470" y="100" fill="#34d399" font-size="12" font-weight="700">阶段2: AccountWorker (批量处理)</text>
-
-        <!-- Batch Read -->
-        <rect x="480" y="115" width="160" height="60" rx="6" fill="#0f172a"/>
-        <rect x="480" y="115" width="160" height="60" rx="6" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="560" y="138" fill="white" font-size="10" font-weight="600" text-anchor="middle">批量读取CQ</text>
-        <text x="560" y="155" fill="#fb923c" font-size="7" text-anchor="middle">incoming_event CQ</text>
-        <text x="560" y="168" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle">每批50个事件</text>
-
-        <!-- Batch Memory Update -->
-        <rect x="660" y="115" width="160" height="60" rx="6" fill="#0f172a"/>
-        <rect x="660" y="115" width="160" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="740" y="135" fill="white" font-size="10" font-weight="600" text-anchor="middle">批量内存更新</text>
-        <text x="740" y="150" fill="#94a3b8" font-size="7" text-anchor="middle">BUY: accountStore.freeze()</text>
-        <text x="740" y="162" fill="#94a3b8" font-size="7" text-anchor="middle">SELL: positionStore.freeze()</text>
-        <text x="740" y="174" fill="#34d399" font-size="7" text-anchor="middle">~0.5μs/操作</text>
-
-        <!-- Memory Account Store -->
-        <rect x="480" y="190" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="480" y="190" width="160" height="55" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="560" y="210" fill="white" font-size="9" font-weight="600" text-anchor="middle">InMemoryAccountStore</text>
-        <text x="560" y="225" fill="#a78bfa" font-size="7" text-anchor="middle">ConcurrentHashMap</text>
-        <text x="560" y="237" fill="#94a3b8" font-size="7" text-anchor="middle">accountId → Account</text>
-
-        <!-- Memory Position Store -->
-        <rect x="660" y="190" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="660" y="190" width="160" height="55" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="740" y="210" fill="white" font-size="9" font-weight="600" text-anchor="middle">InMemoryPositionStore</text>
-        <text x="740" y="225" fill="#a78bfa" font-size="7" text-anchor="middle">ConcurrentHashMap</text>
-        <text x="740" y="237" fill="#94a3b8" font-size="7" text-anchor="middle">acct:symbol → Position</text>
-
-        <!-- Batch Write Match Orders -->
-        <rect x="480" y="260" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="480" y="260" width="160" height="55" rx="6" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="560" y="280" fill="white" font-size="9" font-weight="600" text-anchor="middle">批量写入CQ</text>
-        <text x="560" y="295" fill="#fb923c" font-size="7" text-anchor="middle">match_orders CQ</text>
-        <text x="560" y="307" fill="#fbbf24" font-size="7" text-anchor="middle">MatchOrderEvent[]</text>
-
-        <!-- Batch Complete Futures -->
-        <rect x="660" y="260" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="660" y="260" width="160" height="55" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="740" y="280" fill="white" font-size="9" font-weight="600" text-anchor="middle">批量唤醒HTTP</text>
-        <text x="740" y="295" fill="#34d399" font-size="7" text-anchor="middle">futureManager</text>
-        <text x="740" y="307" fill="#94a3b8" font-size="7" text-anchor="middle">.completeBatch()</text>
-
-        <!-- Update Idempotency -->
-        <rect x="560" y="330" width="180" height="55" rx="6" fill="#0f172a"/>
-        <rect x="560" y="330" width="180" height="55" rx="6" fill="rgba(76, 29, 149, 0.3)" stroke="#a78bfa" stroke-width="1"/>
-        <text x="650" y="350" fill="white" font-size="9" font-weight="600" text-anchor="middle">更新幂等键状态</text>
-        <text x="650" y="365" fill="#34d399" font-size="7" text-anchor="middle">成功→CONFIRMED | 失败→FAILED</text>
-        <text x="650" y="377" fill="#a78bfa" font-size="7" text-anchor="middle">idempotency.dat</text>
-
-        <!-- Arrows Phase 2 -->
-        <line x1="640" y1="145" x2="658" y2="145" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <line x1="560" y1="175" x2="560" y2="188" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="740" y1="175" x2="740" y2="188" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="560" y1="245" x2="560" y2="258" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-        <line x1="740" y1="245" x2="740" y2="258" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <line x1="640" y1="325" x2="640" y2="340" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-
-        <!-- ==================== PHASE 3: MATCHING ENGINE (BATCH) ==================== -->
-        <rect x="870" y="80" width="380" height="320" rx="12" fill="rgba(8, 51, 68, 0.05)" stroke="#22d3ee" stroke-width="2"/>
-        <text x="880" y="100" fill="#22d3ee" font-size="12" font-weight="700">阶段3: MatchingEngine (批量撮合)</text>
-
-        <!-- Batch Read Match Orders -->
-        <rect x="890" y="115" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="890" y="115" width="160" height="55" rx="6" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="970" y="138" fill="white" font-size="10" font-weight="600" text-anchor="middle">批量读取CQ</text>
-        <text x="970" y="153" fill="#fb923c" font-size="7" text-anchor="middle">match_orders CQ</text>
-        <text x="970" y="165" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle">每批50个</text>
-
-        <!-- Group by Symbol -->
-        <rect x="1070" y="115" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="1070" y="115" width="160" height="55" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="1150" y="135" fill="white" font-size="9" font-weight="600" text-anchor="middle">按Symbol分组</text>
-        <text x="1150" y="150" fill="#22d3ee" font-size="7" text-anchor="middle">提高缓存命中率</text>
-        <text x="1150" y="162" fill="#94a3b8" font-size="7" text-anchor="middle">group by symbol</text>
-
-        <!-- OrderBook -->
-        <rect x="890" y="185" width="160" height="70" rx="6" fill="#0f172a"/>
-        <rect x="890" y="185" width="160" height="70" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="970" y="205" fill="white" font-size="10" font-weight="600" text-anchor="middle">内存OrderBook</text>
-        <text x="970" y="220" fill="#a78bfa" font-size="7" text-anchor="middle">TreeMap<Price, Order[]></text>
-        <text x="970" y="232" fill="#94a3b8" font-size="7" text-anchor="middle">价格-时间优先</text>
-        <text x="970" y="247" fill="#fb7185" font-size="7" text-anchor="middle">自成交检查→跳过</text>
-
-        <!-- Match Logic -->
-        <rect x="1070" y="185" width="160" height="70" rx="6" fill="#0f172a"/>
-        <rect x="1070" y="185" width="160" height="70" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="1150" y="205" fill="white" font-size="10" font-weight="600" text-anchor="middle">批量撮合</text>
-        <text x="1150" y="220" fill="#94a3b8" font-size="7" text-anchor="middle">LIMIT/MARKET</text>
-        <text x="1150" y="232" fill="#94a3b8" font-size="7" text-anchor="middle">FAK/FOK</text>
-        <text x="1150" y="247" fill="#34d399" font-size="7" text-anchor="middle">~15μs/订单</text>
-
-        <!-- Batch Write Trades -->
-        <rect x="890" y="270" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="890" y="270" width="160" height="55" rx="6" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="970" y="290" fill="white" font-size="9" font-weight="600" text-anchor="middle">批量写入CQ</text>
-        <text x="970" y="305" fill="#fb923c" font-size="7" text-anchor="middle">trade CQ</text>
-        <text x="970" y="317" fill="#fbbf24" font-size="7" text-anchor="middle">ORDER_UPDATE/TRADE</text>
-
-        <!-- Market Data Push -->
-        <rect x="1070" y="270" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="1070" y="270" width="160" height="55" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="1150" y="290" fill="white" font-size="9" font-weight="600" text-anchor="middle">五档行情推送</text>
-        <text x="1150" y="305" fill="#22d3ee" font-size="7" text-anchor="middle">WebSocket</text>
-        <text x="1150" y="317" fill="#94a3b8" font-size="7" text-anchor="middle">每3秒聚合</text>
-
-        <!-- Arrows Phase 3 -->
-        <line x1="1050" y1="142" x2="1068" y2="142" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
-        <line x1="970" y1="170" x2="970" y2="183" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="1050" y1="220" x2="1068" y2="220" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <line x1="970" y1="255" x2="970" y2="268" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-        <line x1="1070" y1="330" x2="1070" y2="342" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
-
-        <!-- ==================== PHASE 4: CLEARING (BATCH) ==================== -->
-        <rect x="1280" y="80" width="380" height="320" rx="12" fill="rgba(76, 29, 149, 0.05)" stroke="#a78bfa" stroke-width="2"/>
-        <text x="1290" y="100" fill="#a78bfa" font-size="12" font-weight="700">阶段4: ClearingWorker (批量清算)</text>
-
-        <!-- Batch Read Trades -->
-        <rect x="1300" y="115" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="1300" y="115" width="160" height="55" rx="6" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="1380" y="138" fill="white" font-size="10" font-weight="600" text-anchor="middle">批量读取CQ</text>
-        <text x="1380" y="153" fill="#fb923c" font-size="7" text-anchor="middle">trade CQ</text>
-        <text x="1380" y="165" fill="#fbbf24" font-size="7" font-weight="600" text-anchor="middle">每批50个</text>
-
-        <!-- Idempotency Check -->
-        <rect x="1480" y="115" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="1480" y="115" width="160" height="55" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="1560" y="135" fill="white" font-size="9" font-weight="600" text-anchor="middle">事件分发</text>
-        <text x="1560" y="150" fill="#a78bfa" font-size="7" text-anchor="middle">ORDER_UPDATE→NEW</text>
-        <text x="1560" y="162" fill="#34d399" font-size="7" text-anchor="middle">TRADE→清算</text>
-
-        <!-- Update Order Status -->
-        <rect x="1300" y="185" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="1300" y="185" width="160" height="55" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="1380" y="205" fill="white" font-size="9" font-weight="600" text-anchor="middle">更新订单状态</text>
-        <text x="1380" y="220" fill="#a78bfa" font-size="7" text-anchor="middle">orderStore (内存)</text>
-        <text x="1380" y="232" fill="#94a3b8" font-size="7" text-anchor="middle">PENDING→NEW/FILLED</text>
-
-        <!-- Calculate Settlement -->
-        <rect x="1480" y="185" width="160" height="55" rx="6" fill="#0f172a"/>
-        <rect x="1480" y="185" width="160" height="55" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="1560" y="205" fill="white" font-size="9" font-weight="600" text-anchor="middle">TRADE清算</text>
-        <text x="1560" y="220" fill="#94a3b8" font-size="7" text-anchor="middle">幂等putIfAbsent</text>
-        <text x="1560" y="232" fill="#94a3b8" font-size="7" text-anchor="middle">comm = 佣金计算</text>
-
-        <!-- Write Settlement Events -->
-        <rect x="1380" y="255" width="200" height="60" rx="6" fill="#0f172a"/>
-        <rect x="1380" y="255" width="200" height="60" rx="6" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="1480" y="275" fill="white" font-size="9" font-weight="600" text-anchor="middle">批量写入incoming_event CQ</text>
-        <text x="1480" y="290" fill="#fb923c" font-size="7" text-anchor="middle">SETTLEMENT ×2 (买/卖)</text>
-        <text x="1480" y="305" fill="#fb923c" font-size="7" text-anchor="middle">UNFREEZE (撤单时)</text>
-
-        <!-- Arrows Phase 4 -->
-        <line x1="1460" y1="142" x2="1478" y2="142" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="1380" y1="170" x2="1380" y2="183" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="1560" y1="170" x2="1560" y2="183" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <line x1="1460" y1="240" x2="1460" y2="253" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-
-        <!-- ==================== SETTLEMENT FLOW (Back to AccountWorker) ==================== -->
-        <rect x="460" y="420" width="1200" height="150" rx="12" fill="rgba(6, 78, 59, 0.05)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
-        <text x="470" y="440" fill="#34d399" font-size="11" font-weight="600">结算/解冻流程 (AccountWorker处理SETTLEMENT/UNFREEZE事件)</text>
-
-        <!-- Read Settlement Events -->
-        <rect x="480" y="460" width="180" height="90" rx="6" fill="#0f172a"/>
-        <rect x="480" y="460" width="180" height="90" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1"/>
-        <text x="570" y="480" fill="white" font-size="9" font-weight="600" text-anchor="middle">读取结算/解冻事件</text>
-        <text x="570" y="495" fill="#fb923c" font-size="7" text-anchor="middle">incoming_event CQ</text>
-        <text x="570" y="507" fill="#fbbf24" font-size="7" text-anchor="middle">SETTLEMENT/UNFREEZE</text>
-        <text x="570" y="522" fill="#94a3b8" font-size="7" text-anchor="middle">批量读取，批量处理</text>
-
-        <!-- Buyer Settlement -->
-        <rect x="690" y="460" width="180" height="90" rx="6" fill="#0f172a"/>
-        <rect x="690" y="460" width="180" height="90" rx="6" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1"/>
-        <text x="780" y="480" fill="white" font-size="9" font-weight="600" text-anchor="middle">买方结算 (内存)</text>
-        <text x="780" y="495" fill="#94a3b8" font-size="7" text-anchor="middle">1. 解冻→扣款→佣金</text>
-        <text x="780" y="507" fill="#94a3b8" font-size="7" text-anchor="middle">2. 退还差额</text>
-        <text x="780" y="519" fill="#94a3b8" font-size="7" text-anchor="middle">3. 增加持仓(T+1锁)</text>
-        <text x="780" y="534" fill="#34d399" font-size="7" text-anchor="middle">~0.5μs/操作</text>
-
-        <!-- Seller Settlement -->
-        <rect x="900" y="460" width="180" height="90" rx="6" fill="#0f172a"/>
-        <rect x="900" y="460" width="180" height="90" rx="6" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1"/>
-        <text x="990" y="480" fill="white" font-size="9" font-weight="600" text-anchor="middle">卖方结算 (内存)</text>
-        <text x="990" y="495" fill="#94a3b8" font-size="7" text-anchor="middle">1. 解冻持仓</text>
-        <text x="990" y="507" fill="#94a3b8" font-size="7" text-anchor="middle">2. 减持数量</text>
-        <text x="990" y="519" fill="#94a3b8" font-size="7" text-anchor="middle">3. 入账净金额</text>
-        <text x="990" y="534" fill="#34d399" font-size="7" text-anchor="middle">~0.5μs/操作</text>
-
-        <!-- Unfreeze -->
-        <rect x="1110" y="460" width="180" height="90" rx="6" fill="#0f172a"/>
-        <rect x="1110" y="460" width="180" height="90" rx="6" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="1"/>
-        <text x="1200" y="480" fill="white" font-size="9" font-weight="600" text-anchor="middle">解冻 (撤单)</text>
-        <text x="1200" y="495" fill="#fb7185" font-size="7" text-anchor="middle">BUY: unfreeze(amount)</text>
-        <text x="1200" y="507" fill="#fb7185" font-size="7" text-anchor="middle">SELL: unfreezePosition</text>
-        <text x="1200" y="522" fill="#94a3b8" font-size="7" text-anchor="middle">WebSocket推送结果</text>
-
-        <!-- WebSocket Push -->
-        <rect x="1320" y="460" width="180" height="90" rx="6" fill="#0f172a"/>
-        <rect x="1320" y="460" width="180" height="90" rx="6" fill="rgba(8, 51, 68, 0.3)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="1410" y="480" fill="white" font-size="9" font-weight="600" text-anchor="middle">WebSocket推送</text>
-        <text x="1410" y="495" fill="#22d3ee" font-size="7" text-anchor="middle">trade_update</text>
-        <text x="1410" y="507" fill="#22d3ee" font-size="7" text-anchor="middle">position_update</text>
-        <text x="1410" y="519" fill="#22d3ee" font-size="7" text-anchor="middle">account_update</text>
-        <text x="1410" y="534" fill="#94a3b8" font-size="7" text-anchor="middle">异步，不阻塞主链路</text>
-
-        <!-- Arrows Settlement -->
-        <line x1="660" y1="505" x2="688" y2="505" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-        <line x1="870" y1="505" x2="898" y2="505" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <line x1="1080" y1="505" x2="1108" y2="505" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <line x1="1290" y1="505" x2="1318" y2="505" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
-
-        <!-- ==================== SNAPSHOT FLOW ==================== -->
-        <rect x="50" y="420" width="380" height="150" rx="12" fill="rgba(251, 191, 36, 0.05)" stroke="#fbbf24" stroke-width="2"/>
-        <text x="60" y="440" fill="#fbbf24" font-size="12" font-weight="700">快照流程 (SNAPSHOT事件触发)</text>
-
-        <!-- Write SNAPSHOT Event -->
-        <rect x="70" y="460" width="160" height="50" rx="6" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
-        <text x="150" y="480" fill="#fbbf24" font-size="9" font-weight="600" text-anchor="middle">写入SNAPSHOT事件</text>
-        <text x="150" y="495" fill="#94a3b8" font-size="7" text-anchor="middle">→ incoming/match CQ</text>
-
-        <!-- Worker Processes Snapshot -->
-        <rect x="250" y="460" width="160" height="50" rx="6" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
-        <text x="330" y="480" fill="#fbbf24" font-size="9" font-weight="600" text-anchor="middle">Worker处理快照</text>
-        <text x="330" y="495" fill="#94a3b8" font-size="7" text-anchor="middle">后续事件下批次</text>
-
-        <!-- Snapshot Files -->
-        <rect x="160" y="525" width="180" height="30" rx="4" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1"/>
-        <text x="250" y="545" fill="#fbbf24" font-size="7" text-anchor="middle">account_snapshot_{cq_index}.dat</text>
-
-        <!-- Arrows Snapshot -->
-        <line x1="230" y1="485" x2="248" y2="485" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead-amber)"/>
-        <line x1="330" y1="510" x2="330" y2="523" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead-amber)"/>
-
-        <!-- ==================== RECOVERY FLOW ==================== -->
-        <rect x="50" y="590" width="1610" height="200" rx="12" fill="rgba(120, 53, 15, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
-        <text x="60" y="610" fill="#fbbf24" font-size="12" font-weight="700">恢复流程 (崩溃重启)</text>
-
-        <!-- Find Latest Snapshots -->
-        <rect x="70" y="630" width="200" height="70" rx="6" fill="rgba(251, 191, 36, 0.15)" stroke="#fbbf24" stroke-width="1"/>
-        <text x="170" y="652" fill="white" font-size="9" font-weight="600" text-anchor="middle">1. 查找最新快照</text>
-        <text x="170" y="667" fill="#fbbf24" font-size="7" text-anchor="middle">account_snapshot_*.dat</text>
-        <text x="170" y="680" fill="#94a3b8" font-size="7" text-anchor="middle">获取CQ index</text>
-
-        <!-- Load CM to Memory -->
-        <rect x="290" y="630" width="200" height="70" rx="6" fill="rgba(76, 29, 149, 0.2)" stroke="#a78bfa" stroke-width="1"/>
-        <text x="390" y="652" fill="white" font-size="9" font-weight="600" text-anchor="middle">2. 加载CM到内存</text>
-        <text x="390" y="667" fill="#a78bfa" font-size="7" text-anchor="middle">account/position/order</text>
-        <text x="390" y="680" fill="#94a3b8" font-size="7" text-anchor="middle">→ ConcurrentHashMap</text>
-
-        <!-- Load OrderBook -->
-        <rect x="510" y="630" width="200" height="70" rx="6" fill="rgba(76, 29, 149, 0.2)" stroke="#a78bfa" stroke-width="1"/>
-        <text x="610" y="652" fill="white" font-size="9" font-weight="600" text-anchor="middle">3. 加载OrderBook</text>
-        <text x="610" y="667" fill="#a78bfa" font-size="7" text-anchor="middle">orderbook_snapshot_*.dat</text>
-        <text x="610" y="680" fill="#94a3b8" font-size="7" text-anchor="middle">反序列化到内存</text>
-
-        <!-- Read clearing_index -->
-        <rect x="730" y="630" width="200" height="70" rx="6" fill="rgba(251, 191, 36, 0.15)" stroke="#fbbf24" stroke-width="1"/>
-        <text x="830" y="652" fill="white" font-size="9" font-weight="600" text-anchor="middle">4. 读取clearing_index</text>
-        <text x="830" y="667" fill="#fbbf24" font-size="7" text-anchor="middle">clearing_index.dat</text>
-        <text x="830" y="680" fill="#94a3b8" font-size="7" text-anchor="middle">获取trades CQ位置</text>
-
-        <!-- Replay incoming_event -->
-        <rect x="950" y="630" width="200" height="70" rx="6" fill="rgba(251, 146, 60, 0.2)" stroke="#fb923c" stroke-width="1"/>
-        <text x="1050" y="652" fill="white" font-size="9" font-weight="600" text-anchor="middle">5. 重放incoming_event</text>
-        <text x="1050" y="667" fill="#fb923c" font-size="7" text-anchor="middle">从account snapshot index</text>
-        <text x="1050" y="680" fill="#94a3b8" font-size="7" text-anchor="middle">处理后续事件</text>
-
-        <!-- Replay match_orders -->
-        <rect x="1170" y="630" width="200" height="70" rx="6" fill="rgba(251, 146, 60, 0.2)" stroke="#fb923c" stroke-width="1"/>
-        <text x="1270" y="652" fill="white" font-size="9" font-weight="600" text-anchor="middle">6. 重放match_orders</text>
-        <text x="1270" y="667" fill="#fb923c" font-size="7" text-anchor="middle">从match snapshot index</text>
-        <text x="1270" y="680" fill="#94a3b8" font-size="7" text-anchor="middle">重建OrderBook增量</text>
-
-        <!-- Replay trades -->
-        <rect x="1390" y="630" width="200" height="70" rx="6" fill="rgba(251, 146, 60, 0.2)" stroke="#fb923c" stroke-width="1"/>
-        <text x="1490" y="652" fill="white" font-size="9" font-weight="600" text-anchor="middle">7. 重放trades</text>
-        <text x="1490" y="667" fill="#fb923c" font-size="7" text-anchor="middle">从clearing index</text>
-        <text x="1490" y="680" fill="#94a3b8" font-size="7" text-anchor="middle">更新订单状态</text>
-
-        <!-- Arrows Recovery -->
-        <line x1="270" y1="665" x2="288" y2="665" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead-amber)"/>
-        <line x1="490" y1="665" x2="508" y2="665" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="710" y1="665" x2="728" y2="665" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
-        <line x1="930" y1="665" x2="948" y2="665" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead-amber)"/>
-        <line x1="1150" y1="665" x2="1168" y2="665" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-        <line x1="1370" y1="665" x2="1388" y2="665" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead-orange)"/>
-
-        <!-- RPO Info -->
-        <rect x="70" y="720" width="300" height="50" rx="6" fill="rgba(6, 78, 59, 0.2)" stroke="#34d399" stroke-width="1"/>
-        <text x="220" y="742" fill="#34d399" font-size="9" font-weight="600" text-anchor="middle">RPO = 0</text>
-        <text x="220" y="757" fill="#94a3b8" font-size="7" text-anchor="middle">CQ持久化+快照+增量重放</text>
-
-        <!-- ==================== DATA CONSISTENCY ==================== -->
-        <rect x="50" y="810" width="750" height="120" rx="12" fill="rgba(6, 78, 59, 0.05)" stroke="#34d399" stroke-width="1"/>
-        <text x="60" y="830" fill="#34d399" font-size="11" font-weight="600">数据一致性保证</text>
-
-        <!-- Invariants -->
-        <rect x="70" y="850" width="220" height="60" rx="6" fill="rgba(6, 78, 59, 0.2)" stroke="#34d399" stroke-width="1"/>
-        <text x="180" y="870" fill="white" font-size="9" font-weight="600" text-anchor="middle">账户不变式</text>
-        <text x="180" y="885" fill="#34d399" font-size="7" text-anchor="middle">balance = available + frozen</text>
-        <text x="180" y="900" fill="#34d399" font-size="7" text-anchor="middle">frozen = marginFrozen + orderFrozen</text>
-
-        <rect x="310" y="850" width="220" height="60" rx="6" fill="rgba(6, 78, 59, 0.2)" stroke="#34d399" stroke-width="1"/>
-        <text x="420" y="870" fill="white" font-size="9" font-weight="600" text-anchor="middle">持仓不变式</text>
-        <text x="420" y="885" fill="#34d399" font-size="7" text-anchor="middle">|quantity| = available</text>
-        <text x="420" y="900" fill="#34d399" font-size="7" text-anchor="middle">+ frozen + t1Locked</text>
-
-        <rect x="550" y="850" width="220" height="60" rx="6" fill="rgba(6, 78, 59, 0.2)" stroke="#34d399" stroke-width="1"/>
-        <text x="660" y="870" fill="white" font-size="9" font-weight="600" text-anchor="middle">单线程保证</text>
-        <text x="660" y="885" fill="#34d399" font-size="7" text-anchor="middle">AccountWorker串行处理</text>
-        <text x="660" y="900" fill="#94a3b8" font-size="7" text-anchor="middle">天然避免并发问题</text>
-
-        <!-- ==================== PERFORMANCE ==================== -->
-        <rect x="830" y="810" width="830" height="120" rx="12" fill="rgba(8, 51, 68, 0.05)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="840" y="830" fill="#22d3ee" font-size="11" font-weight="600">性能目标</text>
-
-        <rect x="850" y="850" width="180" height="60" rx="6" fill="rgba(8, 51, 68, 0.2)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="940" y="870" fill="white" font-size="9" font-weight="600" text-anchor="middle">吞吐量</text>
-        <text x="940" y="885" fill="#22d3ee" font-size="8" font-weight="600" text-anchor="middle">100K TPS</text>
-        <text x="940" y="900" fill="#94a3b8" font-size="7" text-anchor="middle">批量处理(每批50)</text>
-
-        <rect x="1050" y="850" width="180" height="60" rx="6" fill="rgba(8, 51, 68, 0.2)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="1140" y="870" fill="white" font-size="9" font-weight="600" text-anchor="middle">HTTP返回延迟</text>
-        <text x="1140" y="885" fill="#22d3ee" font-size="8" font-weight="600" text-anchor="middle">P99 &lt; 5ms</text>
-        <text x="1140" y="900" fill="#94a3b8" font-size="7" text-anchor="middle">冻结完成即返回</text>
-
-        <rect x="1250" y="850" width="180" height="60" rx="6" fill="rgba(8, 51, 68, 0.2)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="1340" y="870" fill="white" font-size="9" font-weight="600" text-anchor="middle">端到端延迟</text>
-        <text x="1340" y="885" fill="#22d3ee" font-size="8" font-weight="600" text-anchor="middle">P99 &lt; 15ms</text>
-        <text x="1340" y="900" fill="#94a3b8" font-size="7" text-anchor="middle">下单→成交回报</text>
-
-        <rect x="1450" y="850" width="180" height="60" rx="6" fill="rgba(8, 51, 68, 0.2)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="1540" y="870" fill="white" font-size="9" font-weight="600" text-anchor="middle">内存操作</text>
-        <text x="1540" y="885" fill="#22d3ee" font-size="8" font-weight="600" text-anchor="middle">~0.5μs</text>
-        <text x="1540" y="900" fill="#94a3b8" font-size="7" text-anchor="middle">ConcurrentHashMap</text>
-
-        <!-- ==================== LEGEND ==================== -->
-        <rect x="50" y="950" width="1610" height="80" rx="8" fill="rgba(30, 41, 59, 0.3)" stroke="#1e293b" stroke-width="1"/>
-        <text x="70" y="972" fill="white" font-size="10" font-weight="600">图例</text>
-
-        <rect x="70" y="988" width="14" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
-        <text x="90" y="996" fill="#94a3b8" font-size="8">HTTP处理</text>
-
-        <rect x="180" y="988" width="14" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
-        <text x="200" y="996" fill="#94a3b8" font-size="8">AccountWorker</text>
-
-        <rect x="310" y="988" width="14" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
-        <text x="330" y="996" fill="#94a3b8" font-size="8">MatchingEngine</text>
-
-        <rect x="440" y="988" width="14" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
-        <text x="460" y="996" fill="#94a3b8" font-size="8">ClearingWorker/内存存储</text>
-
-        <rect x="600" y="988" width="14" height="10" rx="2" fill="rgba(251, 146, 60, 0.4)" stroke="#fb923c" stroke-width="1"/>
-        <text x="620" y="996" fill="#94a3b8" font-size="8">CQ读写</text>
-
-        <rect x="700" y="988" width="14" height="10" rx="2" fill="rgba(251, 191, 36, 0.4)" stroke="#fbbf24" stroke-width="1"/>
-        <text x="720" y="996" fill="#94a3b8" font-size="8">快照/恢复</text>
-
-        <line x1="820" y1="993" x2="840" y2="993" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
-        <text x="850" y="996" fill="#94a3b8" font-size="8">数据流</text>
-
-        <line x1="920" y1="993" x2="940" y2="993" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,4"/>
-        <text x="950" y="996" fill="#94a3b8" font-size="8">异步/恢复</text>
-
-        <text x="1040" y="996" fill="#64748b" font-size="8">线程: HTTP(虚拟线程) → AccountWorker(1) → MatchingEngine(1) → ClearingWorker(1)</text>
-
-        <text x="70" y="1020" fill="#64748b" font-size="8">批量处理: 每批50个事件 | 内存操作: ~0.5μs | CQ读写: ~5μs | 批量吞吐: 100K TPS | P99延迟: HTTP&lt;5ms, 端到端&lt;15ms</text>
-      </svg>
-    </div>
-
-    <div class="cards">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot rose"></div>
-          <h3>阶段1: HTTP同步等待</h3>
-        </div>
-        <ul>
-          <li>• 虚拟线程处理请求</li>
-          <li>• 幂等检查 putIfAbsent</li>
-          <li>• CompletableFuture.await(5s)</li>
-          <li>• 冻结完成即返回orderId</li>
-          <li>• 不等待撮合/清算</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot emerald"></div>
-          <h3>阶段2-3: AccountWorker + MatchingEngine</h3>
-        </div>
-        <ul>
-          <li>• 单线程批量处理(每批50)</li>
-          <li>• 内存操作: ~0.5μs/次</li>
-          <li>• InMemoryAccountStore/PositionStore</li>
-          <li>• OrderBook价格-时间优先</li>
-          <li>• 自成交检查→跳过</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot violet"></div>
-          <h3>阶段4: ClearingWorker</h3>
-        </div>
-        <ul>
-          <li>• 批量读取trade CQ</li>
-          <li>• ORDER_UPDATE: PENDING→NEW状态</li>
-          <li>• TRADE: 幂等清算 (putIfAbsent)</li>
-          <li>• 批量更新订单状态(内存)</li>
-          <li>• 发送SETTLEMENT/UNFREEZE</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot amber"></div>
-          <h3>快照与恢复</h3>
-        </div>
-        <ul>
-          <li>• SNAPSHOT事件触发快照</li>
-          <li>• account_snapshot_{cq_index}.dat</li>
-          <li>• match_snapshot_{cq_index}.dat</li>
-          <li>• clearing_index.dat每批次更新</li>
-          <li>• RPO = 0 (CQ持久化)</li>
-        </ul>
-      </div>
-    </div>
-
-    <p class="footer">
-      HFT Trading System V9 • 完整交易链路数据流 • 批量处理100K TPS • 快照+CQ增量恢复 • 内存主存储
-    </p>
+<div class="container">
+  <div class="header">
+    <h1>HFT Trading System V12 &mdash; Full Trading Pipeline</h1>
+    <div class="subtitle">Order Submission &rarr; Risk Control &rarr; Matching &rarr; Clearing &rarr; Settlement &rarr; Snapshot &rarr; Recovery</div>
   </div>
 
-  <script>
-    async function copyAsImage(btn) {
-      const orig = btn.textContent;
-      try {
-        const el = document.getElementById('report-container');
-        const r = el.getBoundingClientRect();
-        const pad = 32;
-        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        btn.textContent = '✓ Copied!';
-      } catch (e) {
-        btn.textContent = '✗ Failed';
-      }
-      setTimeout(() => btn.textContent = orig, 2000);
-    }
+  <div class="toolbar">
+    <button onclick="exportPNG()">Export PNG</button>
+    <button onclick="exportPDF()">Export PDF</button>
+    <button onclick="exportSVG()">Export SVG</button>
+  </div>
 
-    async function downloadPNG(btn) {
-      const orig = btn.textContent;
-      btn.textContent = '⏳ ...';
-      try {
-        const el = document.getElementById('report-container');
-        const r = el.getBoundingClientRect();
-        const pad = 32;
-        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
-        const link = document.createElement('a');
-        link.download = 'hft-trading-full-pipeline-v9.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        btn.textContent = '✓ Done!';
-      } catch (e) {
-        btn.textContent = '✗ Failed';
-      }
-      setTimeout(() => btn.textContent = orig, 2000);
-    }
+  <div class="diagram-wrapper" id="diagram-area">
+    <svg viewBox="0 0 1800 1060" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;">
+      <defs>
+        <marker id="arrow-cyan" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#22d3ee"/>
+        </marker>
+        <marker id="arrow-emerald" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#34d399"/>
+        </marker>
+        <marker id="arrow-violet" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#a78bfa"/>
+        </marker>
+        <marker id="arrow-amber" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#fbbf24"/>
+        </marker>
+        <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#fb923c"/>
+        </marker>
+        <marker id="arrow-rose" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#fb7185"/>
+        </marker>
+        <marker id="arrow-gray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#64748b"/>
+        </marker>
+        <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feFlood flood-color="#22d3ee" flood-opacity="0.15"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-rose" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feFlood flood-color="#fb7185" flood-opacity="0.12"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-emerald" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feFlood flood-color="#34d399" flood-opacity="0.12"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-violet" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feFlood flood-color="#a78bfa" flood-opacity="0.12"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-amber" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feFlood flood-color="#fbbf24" flood-opacity="0.12"/>
+          <feComposite in2="blur" operator="in"/>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
 
-    async function downloadPDF(btn) {
-      const orig = btn.textContent;
-      btn.textContent = '⏳ ...';
-      try {
-        const el = document.getElementById('report-container');
-        const r = el.getBoundingClientRect();
-        const pad = 32;
-        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
-        const imgData = canvas.toDataURL('image/png');
-        const { jsPDF } = window.jspdf;
-        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
-        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
-        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-        pdf.save('hft-trading-full-pipeline-v9.pdf');
-        btn.textContent = '✓ Done!';
-      } catch (e) {
-        btn.textContent = '✗ Failed';
-      }
-      setTimeout(() => btn.textContent = orig, 2000);
+      <!-- ==================== PHASE 1: Order Submission ==================== -->
+      <g filter="url(#glow-rose)">
+        <rect x="50" y="80" width="380" height="320" rx="10" ry="10"
+              fill="rgba(251,113,133,0.04)" stroke="#fb7185" stroke-width="1.5"/>
+      </g>
+      <text x="240" y="106" text-anchor="middle" fill="#fb7185" font-size="14" font-weight="700">Phase 1: Order Submission</text>
+      <text x="240" y="122" text-anchor="middle" fill="#fb718580" font-size="10">HTTP Thread (Virtual Thread)</text>
+
+      <rect x="72" y="132" width="336" height="26" rx="4" fill="rgba(251,113,133,0.08)" stroke="rgba(251,113,133,0.25)" stroke-width="0.8"/>
+      <text x="240" y="149" text-anchor="middle" fill="#fda4af" font-size="11" font-weight="500">HTTP Request /api/orders</text>
+
+      <line x1="240" y1="158" x2="240" y2="166" stroke="#fb7185" stroke-width="1" marker-end="url(#arrow-rose)"/>
+
+      <rect x="72" y="168" width="336" height="26" rx="4" fill="rgba(251,113,133,0.08)" stroke="rgba(251,113,133,0.25)" stroke-width="0.8"/>
+      <text x="240" y="185" text-anchor="middle" fill="#fda4af" font-size="11" font-weight="500">Validation (交易阶段/涨跌停/幂等)</text>
+
+      <line x1="240" y1="194" x2="240" y2="202" stroke="#fb7185" stroke-width="1" marker-end="url(#arrow-rose)"/>
+
+      <rect x="72" y="204" width="336" height="26" rx="4" fill="rgba(251,113,133,0.08)" stroke="rgba(251,113,133,0.25)" stroke-width="0.8"/>
+      <text x="240" y="221" text-anchor="middle" fill="#fda4af" font-size="11" font-weight="500">Generate Order ID (Snowflake)</text>
+
+      <line x1="240" y1="230" x2="240" y2="238" stroke="#fb7185" stroke-width="1" marker-end="url(#arrow-rose)"/>
+
+      <rect x="72" y="240" width="336" height="26" rx="4" fill="rgba(251,113,133,0.12)" stroke="rgba(251,113,133,0.35)" stroke-width="0.8"/>
+      <text x="240" y="257" text-anchor="middle" fill="#fda4af" font-size="11" font-weight="600">Create CompletableFuture</text>
+
+      <line x1="240" y1="266" x2="240" y2="274" stroke="#fb7185" stroke-width="1" marker-end="url(#arrow-rose)"/>
+
+      <rect x="72" y="276" width="336" height="26" rx="4" fill="rgba(251,113,133,0.15)" stroke="rgba(251,113,133,0.4)" stroke-width="0.8"/>
+      <text x="240" y="293" text-anchor="middle" fill="#fda4af" font-size="11" font-weight="600">Write account_input CQ</text>
+
+      <line x1="240" y1="302" x2="240" y2="310" stroke="#fb7185" stroke-width="1" marker-end="url(#arrow-rose)"/>
+
+      <rect x="72" y="312" width="336" height="26" rx="4" fill="rgba(251,113,133,0.08)" stroke="rgba(251,113,133,0.25)" stroke-width="0.8"/>
+      <text x="240" y="329" text-anchor="middle" fill="#fda4af" font-size="11" font-weight="500">future.orTimeout(5s) &rarr; Await</text>
+
+      <line x1="240" y1="338" x2="240" y2="346" stroke="#fb7185" stroke-width="1" marker-end="url(#arrow-rose)"/>
+
+      <rect x="72" y="348" width="336" height="22" rx="4" fill="rgba(251,113,133,0.06)" stroke="rgba(251,113,133,0.2)" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <text x="240" y="363" text-anchor="middle" fill="#fb718599" font-size="10" font-weight="500">Return orderId + PENDING</text>
+
+      <!-- ==================== PHASE 2: AccountWorker ==================== -->
+      <g filter="url(#glow-emerald)">
+        <rect x="460" y="80" width="380" height="320" rx="10" ry="10"
+              fill="rgba(52,211,153,0.04)" stroke="#34d399" stroke-width="1.5"/>
+      </g>
+      <text x="650" y="106" text-anchor="middle" fill="#34d399" font-size="14" font-weight="700">Phase 2: AccountWorker</text>
+      <text x="650" y="122" text-anchor="middle" fill="#34d39980" font-size="10">Single Thread &bull; Batch Processing</text>
+
+      <rect x="482" y="132" width="336" height="26" rx="4" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.25)" stroke-width="0.8"/>
+      <text x="650" y="149" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="500">Batch Read account_input CQ (50)</text>
+
+      <line x1="650" y1="158" x2="650" y2="166" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+      <rect x="482" y="168" width="336" height="66" rx="4" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.25)" stroke-width="0.8"/>
+      <text x="650" y="185" text-anchor="middle" fill="#6ee7b7" font-size="10" font-weight="600">Process Events:</text>
+      <text x="650" y="199" text-anchor="middle" fill="#6ee7b799" font-size="9.5">INSTRUMENT_INIT / PHASE_CHANGE / DEPOSIT</text>
+      <text x="650" y="213" text-anchor="middle" fill="#6ee7b7" font-size="9.5" font-weight="500">NEW_ORDER: MarketBuy freeze 涨停价×qty+佣金ceil</text>
+      <text x="650" y="227" text-anchor="middle" fill="#6ee7b799" font-size="9.5">LimitBuy freeze price×qty+佣金ceil | Sell freeze position</text>
+
+      <line x1="650" y1="234" x2="650" y2="242" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+      <rect x="482" y="244" width="336" height="26" rx="4" fill="rgba(52,211,153,0.12)" stroke="rgba(52,211,153,0.35)" stroke-width="0.8"/>
+      <text x="650" y="261" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="600">Pending-mutations Pattern</text>
+
+      <line x1="650" y1="270" x2="650" y2="278" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+      <rect x="482" y="280" width="336" height="26" rx="4" fill="rgba(52,211,153,0.15)" stroke="rgba(52,211,153,0.4)" stroke-width="0.8"/>
+      <text x="650" y="297" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="600">Batch Write matching_input CQ</text>
+
+      <line x1="650" y1="306" x2="650" y2="314" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+      <rect x="482" y="316" width="336" height="26" rx="4" fill="rgba(52,211,153,0.12)" stroke="rgba(52,211,153,0.35)" stroke-width="0.8"/>
+      <text x="650" y="333" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="500">Batch Write account_output CQ</text>
+
+      <line x1="650" y1="342" x2="650" y2="350" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+      <rect x="482" y="352" width="336" height="22" rx="4" fill="rgba(52,211,153,0.06)" stroke="rgba(52,211,153,0.2)" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <text x="650" y="367" text-anchor="middle" fill="#34d39999" font-size="10" font-weight="500">Batch CompletableFuture.complete()</text>
+
+      <!-- ==================== PHASE 3: MatchingEngine ==================== -->
+      <g filter="url(#glow-cyan)">
+        <rect x="870" y="80" width="380" height="320" rx="10" ry="10"
+              fill="rgba(34,211,238,0.04)" stroke="#22d3ee" stroke-width="1.5"/>
+      </g>
+      <text x="1060" y="106" text-anchor="middle" fill="#22d3ee" font-size="14" font-weight="700">Phase 3: MatchingEngine</text>
+      <text x="1060" y="122" text-anchor="middle" fill="#22d3ee80" font-size="10">Single Thread &bull; Batch Processing</text>
+
+      <rect x="892" y="132" width="336" height="26" rx="4" fill="rgba(34,211,238,0.08)" stroke="rgba(34,211,238,0.25)" stroke-width="0.8"/>
+      <text x="1060" y="149" text-anchor="middle" fill="#67e8f9" font-size="11" font-weight="500">Batch Read matching_input CQ (50)</text>
+
+      <line x1="1060" y1="158" x2="1060" y2="166" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+      <rect x="892" y="168" width="336" height="26" rx="4" fill="rgba(34,211,238,0.08)" stroke="rgba(34,211,238,0.25)" stroke-width="0.8"/>
+      <text x="1060" y="185" text-anchor="middle" fill="#67e8f9" font-size="11" font-weight="500">Group by Symbol</text>
+
+      <line x1="1060" y1="194" x2="1060" y2="202" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+      <rect x="892" y="204" width="336" height="56" rx="4" fill="rgba(34,211,238,0.08)" stroke="rgba(34,211,238,0.25)" stroke-width="0.8"/>
+      <text x="1060" y="221" text-anchor="middle" fill="#67e8f9" font-size="10" font-weight="600">Process NEW_ORDER:</text>
+      <text x="1060" y="235" text-anchor="middle" fill="#67e8f999" font-size="9.5">Idempotency check &rarr; Status check</text>
+      <text x="1060" y="249" text-anchor="middle" fill="#67e8f9" font-size="9.5" font-weight="500">Add to OrderBook &rarr; Match: LIMIT/MARKET/FAK/FOK</text>
+
+      <line x1="1060" y1="260" x2="1060" y2="268" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+      <rect x="892" y="270" width="336" height="26" rx="4" fill="rgba(34,211,238,0.08)" stroke="rgba(34,211,238,0.25)" stroke-width="0.8"/>
+      <text x="1060" y="287" text-anchor="middle" fill="#67e8f9" font-size="11" font-weight="500">Process CANCEL_ORDER</text>
+
+      <line x1="1060" y1="296" x2="1060" y2="304" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+      <rect x="892" y="306" width="336" height="26" rx="4" fill="rgba(34,211,238,0.15)" stroke="rgba(34,211,238,0.4)" stroke-width="0.8"/>
+      <text x="1060" y="323" text-anchor="middle" fill="#67e8f9" font-size="11" font-weight="600">Batch Write matching_output CQ</text>
+      <text x="1060" y="330" text-anchor="middle" fill="#22d3ee99" font-size="8">TRADE before CANCEL_SUCCESS</text>
+
+      <line x1="1060" y1="336" x2="1060" y2="344" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+      <rect x="892" y="346" width="336" height="24" rx="4" fill="rgba(34,211,238,0.06)" stroke="rgba(34,211,238,0.2)" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <text x="1060" y="362" text-anchor="middle" fill="#22d3ee99" font-size="10" font-weight="500">Five-level push (3s) + K-line (real-time)</text>
+
+      <!-- ==================== PHASE 4: ClearingWorker ==================== -->
+      <g filter="url(#glow-violet)">
+        <rect x="1280" y="80" width="380" height="320" rx="10" ry="10"
+              fill="rgba(167,139,250,0.04)" stroke="#a78bfa" stroke-width="1.5"/>
+      </g>
+      <text x="1470" y="106" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700">Phase 4: ClearingWorker</text>
+      <text x="1470" y="122" text-anchor="middle" fill="#a78bfa80" font-size="10">Single Thread &bull; Batch Processing</text>
+
+      <rect x="1302" y="132" width="336" height="26" rx="4" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.25)" stroke-width="0.8"/>
+      <text x="1470" y="149" text-anchor="middle" fill="#c4b5fd" font-size="11" font-weight="500">Batch Read matching_output CQ (100)</text>
+
+      <line x1="1470" y1="158" x2="1470" y2="166" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+
+      <rect x="1302" y="168" width="336" height="26" rx="4" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.25)" stroke-width="0.8"/>
+      <text x="1470" y="185" text-anchor="middle" fill="#c4b5fd" font-size="11" font-weight="500">ORDER_UPDATE: PENDING &rarr; NEW</text>
+
+      <line x1="1470" y1="194" x2="1470" y2="202" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+
+      <rect x="1302" y="204" width="336" height="66" rx="4" fill="rgba(167,139,250,0.1)" stroke="rgba(167,139,250,0.3)" stroke-width="0.8"/>
+      <text x="1470" y="221" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">TRADE Processing:</text>
+      <text x="1470" y="235" text-anchor="middle" fill="#c4b5fd99" font-size="9.5">Update filledQuantity</text>
+      <text x="1470" y="249" text-anchor="middle" fill="#c4b5fd" font-size="9.5" font-weight="500">Calculate commission(floor), frozenAmountUsed(ceil)</text>
+      <text x="1470" y="263" text-anchor="middle" fill="#c4b5fd" font-size="9.5" font-weight="500">Generate SETTLEMENT &times; 2 (buyer + seller)</text>
+
+      <line x1="1470" y1="270" x2="1470" y2="278" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+
+      <rect x="1302" y="280" width="336" height="26" rx="4" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.25)" stroke-width="0.8"/>
+      <text x="1470" y="297" text-anchor="middle" fill="#c4b5fd" font-size="11" font-weight="500">CANCEL_SUCCESS &rarr; Generate UNFREEZE</text>
+
+      <line x1="1470" y1="306" x2="1470" y2="314" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+
+      <rect x="1302" y="316" width="336" height="26" rx="4" fill="rgba(167,139,250,0.15)" stroke="rgba(167,139,250,0.4)" stroke-width="0.8"/>
+      <text x="1470" y="333" text-anchor="middle" fill="#c4b5fd" font-size="11" font-weight="600">Write account_settlement CQ</text>
+
+      <line x1="1470" y1="342" x2="1470" y2="350" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+
+      <rect x="1302" y="352" width="336" height="22" rx="4" fill="rgba(167,139,250,0.06)" stroke="rgba(167,139,250,0.2)" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <text x="1470" y="367" text-anchor="middle" fill="#a78bfa99" font-size="10" font-weight="500">Write clearing_position.dat (atomic)</text>
+
+      <!-- ==================== Inter-Phase Arrows ==================== -->
+      <line x1="430" y1="290" x2="460" y2="290" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+      <text x="445" y="284" text-anchor="middle" fill="#64748b" font-size="8">CQ</text>
+
+      <line x1="840" y1="290" x2="870" y2="290" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+      <text x="855" y="284" text-anchor="middle" fill="#64748b" font-size="8">CQ</text>
+
+      <line x1="1250" y1="290" x2="1280" y2="290" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+      <text x="1265" y="284" text-anchor="middle" fill="#64748b" font-size="8">CQ</text>
+
+      <!-- ==================== Settlement Flow ==================== -->
+      <rect x="460" y="420" width="1200" height="155" rx="10" ry="10"
+            fill="rgba(52,211,153,0.02)" stroke="#34d399" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="1060" y="442" text-anchor="middle" fill="#34d399" font-size="13" font-weight="700">Settlement Flow (AccountWorker reads account_settlement CQ)</text>
+
+      <!-- SETTLEMENT section -->
+      <rect x="490" y="456" width="560" height="105" rx="6" fill="rgba(52,211,153,0.05)" stroke="rgba(52,211,153,0.2)" stroke-width="0.8"/>
+      <text x="770" y="474" text-anchor="middle" fill="#34d399" font-size="11" font-weight="600">SETTLEMENT (Idempotency: tradeId_orderId)</text>
+
+      <!-- Buyer side -->
+      <rect x="504" y="482" width="252" height="68" rx="4" fill="rgba(34,211,238,0.05)" stroke="rgba(34,211,238,0.2)" stroke-width="0.6"/>
+      <text x="630" y="498" text-anchor="middle" fill="#22d3ee" font-size="10" font-weight="600">Buyer</text>
+      <text x="630" y="512" text-anchor="middle" fill="#94a3b8" font-size="9">frozen -= frozenAmountUsed</text>
+      <text x="630" y="524" text-anchor="middle" fill="#94a3b8" font-size="9">balance -= frozenAmountUsed</text>
+      <text x="630" y="536" text-anchor="middle" fill="#94a3b8" font-size="9">available += refund (ceil-floor)</text>
+      <text x="630" y="548" text-anchor="middle" fill="#94a3b8" font-size="9">position.qty += qty, t1Locked += qty</text>
+
+      <!-- Seller side -->
+      <rect x="770" y="482" width="266" height="68" rx="4" fill="rgba(251,113,133,0.05)" stroke="rgba(251,113,133,0.2)" stroke-width="0.6"/>
+      <text x="903" y="498" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="600">Seller</text>
+      <text x="903" y="512" text-anchor="middle" fill="#94a3b8" font-size="9">position.frozen -= qty</text>
+      <text x="903" y="524" text-anchor="middle" fill="#94a3b8" font-size="9">position.quantity -= qty</text>
+      <text x="903" y="536" text-anchor="middle" fill="#94a3b8" font-size="9">balance += net amount</text>
+
+      <!-- UNFREEZE section -->
+      <rect x="1070" y="456" width="570" height="105" rx="6" fill="rgba(52,211,153,0.05)" stroke="rgba(52,211,153,0.2)" stroke-width="0.8"/>
+      <text x="1355" y="474" text-anchor="middle" fill="#34d399" font-size="11" font-weight="600">UNFREEZE (Idempotency: orderId)</text>
+
+      <!-- Buy unfreeze -->
+      <rect x="1084" y="482" width="262" height="68" rx="4" fill="rgba(34,211,238,0.05)" stroke="rgba(34,211,238,0.2)" stroke-width="0.6"/>
+      <text x="1215" y="498" text-anchor="middle" fill="#22d3ee" font-size="10" font-weight="600">Buy Unfreeze</text>
+      <text x="1215" y="512" text-anchor="middle" fill="#94a3b8" font-size="9">available += unfrozenAmount</text>
+      <text x="1215" y="524" text-anchor="middle" fill="#94a3b8" font-size="9">frozen -= unfrozenAmount</text>
+
+      <!-- Sell unfreeze -->
+      <rect x="1360" y="482" width="266" height="68" rx="4" fill="rgba(251,113,133,0.05)" stroke="rgba(251,113,133,0.2)" stroke-width="0.6"/>
+      <text x="1493" y="498" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="600">Sell Unfreeze</text>
+      <text x="1493" y="512" text-anchor="middle" fill="#94a3b8" font-size="9">position.available += qty</text>
+      <text x="1493" y="524" text-anchor="middle" fill="#94a3b8" font-size="9">position.frozen -= qty</text>
+
+      <!-- WebSocket push label -->
+      <rect x="490" y="535" width="1150" height="20" rx="3" fill="rgba(251,146,60,0.06)" stroke="rgba(251,146,60,0.2)" stroke-width="0.5"/>
+      <text x="1060" y="549" text-anchor="middle" fill="#fb923c" font-size="9.5" font-weight="500">WebSocket Push: account_update + position_update + order_update + trade_update</text>
+
+      <!-- Arrow from Phase 4 down to Settlement -->
+      <path d="M1470,400 L1470,420" stroke="#34d399" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#arrow-emerald)" fill="none"/>
+
+      <!-- ==================== Snapshot Flow ==================== -->
+      <g filter="url(#glow-amber)">
+        <rect x="50" y="420" width="380" height="155" rx="10" ry="10"
+              fill="rgba(251,191,36,0.04)" stroke="#fbbf24" stroke-width="1.5"/>
+      </g>
+      <text x="240" y="444" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Snapshot Flow</text>
+      <text x="240" y="459" text-anchor="middle" fill="#fbbf2480" font-size="10">SnapshotWorker (Timer)</text>
+
+      <rect x="72" y="470" width="336" height="22" rx="4" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.25)" stroke-width="0.8"/>
+      <text x="240" y="485" text-anchor="middle" fill="#fde68a" font-size="10" font-weight="500">Write SNAPSHOT to account_input CQ</text>
+
+      <line x1="240" y1="492" x2="240" y2="498" stroke="#fbbf24" stroke-width="0.8" marker-end="url(#arrow-amber)"/>
+
+      <rect x="72" y="500" width="336" height="22" rx="4" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.25)" stroke-width="0.8"/>
+      <text x="240" y="515" text-anchor="middle" fill="#fde68a" font-size="10" font-weight="500">Write SNAPSHOT to matching_input CQ</text>
+
+      <line x1="240" y1="522" x2="240" y2="528" stroke="#fbbf24" stroke-width="0.8" marker-end="url(#arrow-amber)"/>
+
+      <rect x="72" y="530" width="336" height="24" rx="4" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.25)" stroke-width="0.8"/>
+      <text x="240" y="546" text-anchor="middle" fill="#fde68a" font-size="9.5" font-weight="500">Workers: process prior events first, then snapshot</text>
+
+      <rect x="72" y="558" width="336" height="12" rx="3" fill="none"/>
+      <text x="240" y="568" text-anchor="middle" fill="#fbbf2499" font-size="9">tmp &rarr; data &rarr; MD5 checksum &rarr; rename</text>
+
+      <text x="240" y="582" text-anchor="middle" fill="#fbbf2480" font-size="8.5">Clean old snapshots (keep 3)</text>
+
+      <!-- ==================== Recovery Flow ==================== -->
+      <rect x="50" y="600" width="1700" height="190" rx="10" ry="10"
+            fill="rgba(251,191,36,0.02)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="900" y="622" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Recovery Flow (RPO = 0)</text>
+
+      <!-- Phase 1 -->
+      <rect x="70" y="636" width="390" height="140" rx="8" fill="rgba(52,211,153,0.04)" stroke="rgba(52,211,153,0.3)" stroke-width="0.8"/>
+      <text x="265" y="656" text-anchor="middle" fill="#34d399" font-size="11" font-weight="700">1. AccountWorker Recovery</text>
+      <text x="265" y="674" text-anchor="middle" fill="#94a3b8" font-size="9.5">Load account_snapshot_{cq_index}.dat</text>
+      <text x="265" y="692" text-anchor="middle" fill="#64748b" font-size="9">&darr;</text>
+      <text x="265" y="708" text-anchor="middle" fill="#34d399" font-size="9.5" font-weight="500">Generate idempotency sets</text>
+      <text x="265" y="726" text-anchor="middle" fill="#64748b" font-size="9">&darr;</text>
+      <text x="265" y="742" text-anchor="middle" fill="#94a3b8" font-size="9.5">Replay account_input CQ from (snapshot_index + 1)</text>
+
+      <!-- Arrow 1->2 -->
+      <line x1="460" y1="710" x2="490" y2="710" stroke="#64748b" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+      <!-- Phase 2 -->
+      <rect x="490" y="636" width="390" height="140" rx="8" fill="rgba(34,211,238,0.04)" stroke="rgba(34,211,238,0.3)" stroke-width="0.8"/>
+      <text x="685" y="656" text-anchor="middle" fill="#22d3ee" font-size="11" font-weight="700">2. MatchingEngine Recovery</text>
+      <text x="685" y="674" text-anchor="middle" fill="#94a3b8" font-size="9.5">Load orderbook_snapshot_{cq_index}.dat</text>
+      <text x="685" y="692" text-anchor="middle" fill="#64748b" font-size="9">&darr;</text>
+      <text x="685" y="708" text-anchor="middle" fill="#22d3ee" font-size="9.5" font-weight="500">Restore OrderBook (TreeMap)</text>
+      <text x="685" y="726" text-anchor="middle" fill="#64748b" font-size="9">&darr;</text>
+      <text x="685" y="742" text-anchor="middle" fill="#94a3b8" font-size="9.5">Replay matching_input CQ from (snapshot_index + 1)</text>
+
+      <!-- Arrow 2->3 -->
+      <line x1="880" y1="710" x2="910" y2="710" stroke="#64748b" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+      <!-- Phase 3 -->
+      <rect x="910" y="636" width="390" height="140" rx="8" fill="rgba(167,139,250,0.04)" stroke="rgba(167,139,250,0.3)" stroke-width="0.8"/>
+      <text x="1105" y="656" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="700">3. ClearingWorker Recovery</text>
+      <text x="1105" y="674" text-anchor="middle" fill="#94a3b8" font-size="9.5">Read clearing_position.dat</text>
+      <text x="1105" y="692" text-anchor="middle" fill="#64748b" font-size="9">&darr;</text>
+      <text x="1105" y="708" text-anchor="middle" fill="#a78bfa" font-size="9.5" font-weight="500">Get trades_cq_index</text>
+      <text x="1105" y="726" text-anchor="middle" fill="#64748b" font-size="9">&darr;</text>
+      <text x="1105" y="742" text-anchor="middle" fill="#94a3b8" font-size="9.5">Replay matching_output CQ from (trades_cq_index + 1)</text>
+
+      <!-- Arrow 3->4 -->
+      <line x1="1300" y1="710" x2="1330" y2="710" stroke="#64748b" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+      <!-- Phase 4 -->
+      <rect x="1330" y="636" width="400" height="140" rx="8" fill="rgba(52,211,153,0.04)" stroke="rgba(52,211,153,0.3)" stroke-width="0.8"/>
+      <text x="1530" y="656" text-anchor="middle" fill="#34d399" font-size="11" font-weight="700">4. AccountWorker Phase 2</text>
+      <text x="1530" y="674" text-anchor="middle" fill="#94a3b8" font-size="9.5">Generate idempotency sets from current state</text>
+      <text x="1530" y="692" text-anchor="middle" fill="#64748b" font-size="9">&darr;</text>
+      <text x="1530" y="708" text-anchor="middle" fill="#34d399" font-size="9.5" font-weight="500">Replay account_settlement CQ</text>
+      <text x="1530" y="726" text-anchor="middle" fill="#94a3b8" font-size="9.5">Apply SETTLEMENT / UNFREEZE</text>
+      <text x="1530" y="742" text-anchor="middle" fill="#94a3b8" font-size="9.5">with idempotency checks</text>
+
+      <!-- ==================== Data Consistency & Performance ==================== -->
+      <!-- Data Consistency -->
+      <rect x="50" y="810" width="860" height="120" rx="10" ry="10"
+            fill="rgba(34,211,238,0.03)" stroke="rgba(34,211,238,0.2)" stroke-width="1"/>
+      <text x="480" y="834" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="700">Data Consistency Guarantees</text>
+
+      <rect x="70" y="846" width="400" height="36" rx="5" fill="rgba(52,211,153,0.06)" stroke="rgba(52,211,153,0.2)" stroke-width="0.7"/>
+      <text x="270" y="862" text-anchor="middle" fill="#34d399" font-size="10" font-weight="600">Account Invariant</text>
+      <text x="270" y="876" text-anchor="middle" fill="#94a3b8" font-size="9">balance = available + frozen</text>
+
+      <rect x="490" y="846" width="400" height="36" rx="5" fill="rgba(251,113,133,0.06)" stroke="rgba(251,113,133,0.2)" stroke-width="0.7"/>
+      <text x="690" y="862" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="600">Position Invariant</text>
+      <text x="690" y="876" text-anchor="middle" fill="#94a3b8" font-size="9">|quantity| = available + frozen + t1Locked</text>
+
+      <rect x="70" y="890" width="400" height="32" rx="5" fill="rgba(167,139,250,0.06)" stroke="rgba(167,139,250,0.2)" stroke-width="0.7"/>
+      <text x="270" y="904" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="600">Single-Thread Guarantee</text>
+      <text x="270" y="917" text-anchor="middle" fill="#94a3b8" font-size="9">Each worker: serial processing, no lock needed</text>
+
+      <rect x="490" y="890" width="400" height="32" rx="5" fill="rgba(251,191,36,0.06)" stroke="rgba(251,191,36,0.2)" stroke-width="0.7"/>
+      <text x="690" y="904" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="600">Three-Layer Idempotency</text>
+      <text x="690" y="917" text-anchor="middle" fill="#94a3b8" font-size="9">Order / Trade / Settlement dedup via putIfAbsent()</text>
+
+      <!-- Performance -->
+      <rect x="930" y="810" width="820" height="120" rx="10" ry="10"
+            fill="rgba(251,146,60,0.03)" stroke="rgba(251,146,60,0.2)" stroke-width="1"/>
+      <text x="1340" y="834" text-anchor="middle" fill="#fb923c" font-size="13" font-weight="700">Performance Targets</text>
+
+      <rect x="950" y="846" width="190" height="36" rx="5" fill="rgba(251,146,60,0.06)" stroke="rgba(251,146,60,0.2)" stroke-width="0.7"/>
+      <text x="1045" y="862" text-anchor="middle" fill="#fb923c" font-size="10" font-weight="600">Throughput</text>
+      <text x="1045" y="876" text-anchor="middle" fill="#94a3b8" font-size="9">100K TPS (peak) / 80K (sustained)</text>
+
+      <rect x="1155" y="846" width="190" height="36" rx="5" fill="rgba(34,211,238,0.06)" stroke="rgba(34,211,238,0.2)" stroke-width="0.7"/>
+      <text x="1250" y="862" text-anchor="middle" fill="#22d3ee" font-size="10" font-weight="600">HTTP Latency</text>
+      <text x="1250" y="876" text-anchor="middle" fill="#94a3b8" font-size="9">P99 &lt; 5ms</text>
+
+      <rect x="1360" y="846" width="190" height="36" rx="5" fill="rgba(52,211,153,0.06)" stroke="rgba(52,211,153,0.2)" stroke-width="0.7"/>
+      <text x="1455" y="862" text-anchor="middle" fill="#34d399" font-size="10" font-weight="600">E2E Latency</text>
+      <text x="1455" y="876" text-anchor="middle" fill="#94a3b8" font-size="9">P99 &lt; 15ms</text>
+
+      <rect x="1565" y="846" width="165" height="36" rx="5" fill="rgba(167,139,250,0.06)" stroke="rgba(167,139,250,0.2)" stroke-width="0.7"/>
+      <text x="1647" y="862" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="600">Typical</text>
+      <text x="1647" y="876" text-anchor="middle" fill="#94a3b8" font-size="9">~7ms end-to-end</text>
+
+      <rect x="950" y="890" width="380" height="32" rx="5" fill="rgba(251,191,36,0.06)" stroke="rgba(251,191,36,0.2)" stroke-width="0.7"/>
+      <text x="1140" y="904" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="600">Batch Size</text>
+      <text x="1140" y="917" text-anchor="middle" fill="#94a3b8" font-size="9">AccountWorker=50 | Matching=50 | Clearing=100</text>
+
+      <rect x="1350" y="890" width="380" height="32" rx="5" fill="rgba(251,113,133,0.06)" stroke="rgba(251,113,133,0.2)" stroke-width="0.7"/>
+      <text x="1540" y="904" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="600">Snapshot Interval</text>
+      <text x="1540" y="917" text-anchor="middle" fill="#94a3b8" font-size="9">Every 60 seconds | Keep last 3 snapshots</text>
+
+      <!-- ==================== CQ Flow Overview ==================== -->
+      <rect x="50" y="950" width="1700" height="70" rx="10" ry="10"
+            fill="rgba(15,23,42,0.5)" stroke="rgba(100,116,139,0.2)" stroke-width="0.8"/>
+      <text x="900" y="972" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">Chronicle Queue Pipeline Overview</text>
+
+      <rect x="80" y="982" width="200" height="26" rx="4" fill="rgba(251,113,133,0.1)" stroke="rgba(251,113,133,0.3)" stroke-width="0.8"/>
+      <text x="180" y="999" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="500">account_input.cq</text>
+
+      <line x1="280" y1="995" x2="320" y2="995" stroke="#64748b" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+      <rect x="320" y="982" width="200" height="26" rx="4" fill="rgba(52,211,153,0.1)" stroke="rgba(52,211,153,0.3)" stroke-width="0.8"/>
+      <text x="420" y="999" text-anchor="middle" fill="#34d399" font-size="10" font-weight="500">matching_input.cq</text>
+
+      <line x1="520" y1="995" x2="560" y2="995" stroke="#64748b" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+      <rect x="560" y="982" width="200" height="26" rx="4" fill="rgba(34,211,238,0.1)" stroke="rgba(34,211,238,0.3)" stroke-width="0.8"/>
+      <text x="660" y="999" text-anchor="middle" fill="#22d3ee" font-size="10" font-weight="500">matching_output.cq</text>
+
+      <line x1="760" y1="995" x2="800" y2="995" stroke="#64748b" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+      <rect x="800" y="982" width="200" height="26" rx="4" fill="rgba(167,139,250,0.1)" stroke="rgba(167,139,250,0.3)" stroke-width="0.8"/>
+      <text x="900" y="999" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="500">account_settlement.cq</text>
+
+      <line x1="1000" y1="995" x2="1040" y2="995" stroke="#64748b" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+      <rect x="1040" y="982" width="200" height="26" rx="4" fill="rgba(52,211,153,0.1)" stroke="rgba(52,211,153,0.3)" stroke-width="0.8"/>
+      <text x="1140" y="999" text-anchor="middle" fill="#34d399" font-size="10" font-weight="500">Settlement Applied</text>
+
+      <!-- Snapshot files -->
+      <rect x="1300" y="982" width="160" height="26" rx="4" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.3)" stroke-width="0.8"/>
+      <text x="1380" y="999" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="500">account_snapshot_*.dat</text>
+
+      <rect x="1470" y="982" width="160" height="26" rx="4" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.3)" stroke-width="0.8"/>
+      <text x="1550" y="999" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="500">orderbook_snapshot_*.dat</text>
+
+      <rect x="1640" y="982" width="90" height="26" rx="4" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.3)" stroke-width="0.8"/>
+      <text x="1685" y="999" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="500">clearing_*.dat</text>
+
+    </svg>
+  </div>
+
+  <div class="info-cards">
+    <div class="info-card">
+      <div class="card-icon">&#9889;</div>
+      <div class="card-title">Single-JVM Architecture</div>
+      <div class="card-text">
+        All components run in a single JVM process. No distributed coordination overhead.
+        AccountWorker, MatchingEngine, ClearingWorker each run on a dedicated single thread,
+        eliminating lock contention and ensuring serial consistency for state mutations.
+      </div>
+    </div>
+    <div class="info-card">
+      <div class="card-icon">&#128274;</div>
+      <div class="card-title">RPO = 0 Guarantee</div>
+      <div class="card-text">
+        All state changes are persisted to Chronicle Queue before memory update.
+        Snapshot + incremental replay ensures zero data loss on restart.
+        Atomic file writes (tmp &rarr; data &rarr; MD5 &rarr; rename) prevent snapshot corruption.
+      </div>
+    </div>
+    <div class="info-card">
+      <div class="card-icon">&#128640;</div>
+      <div class="card-title">100K TPS Design</div>
+      <div class="card-text">
+        Batch processing (50-100 events/batch) amortizes CQ write overhead.
+        In-memory ConcurrentHashMap for hot path. Virtual threads for HTTP with
+        CompletableFuture sync pattern. ZGC eliminates GC pause impact on P99 latency.
+      </div>
+    </div>
+    <div class="info-card">
+      <div class="card-icon">&#128737;</div>
+      <div class="card-title">Three-Layer Idempotency</div>
+      <div class="card-text">
+        Order layer: Snowflake ID + putIfAbsent() prevents duplicate order creation.
+        Trade layer: tradeId dedup prevents double settlement.
+        Settlement layer: tradeId_orderId composite key ensures exact-once clearing.
+        Critical for CQ replay during recovery.
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    HFT Trading System V12 &mdash; Full Trading Pipeline Diagram &bull; Generated 2026-06-04 &bull; Single JVM &bull; Chronicle Queue + Chronicle Map + H2
+  </div>
+</div>
+
+<script>
+function exportPNG() {
+  const area = document.getElementById('diagram-area');
+  html2canvas(area, { backgroundColor: '#020617', scale: 2 }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = 'hft-trading-pipeline-v12.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+}
+
+function exportPDF() {
+  const area = document.getElementById('diagram-area');
+  html2canvas(area, { backgroundColor: '#020617', scale: 2 }).then(canvas => {
+    const { jsPDF } = window.jspdf;
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('l', 'mm', 'a2');
+    const pdfW = pdf.internal.pageSize.getWidth();
+    const pdfH = pdf.internal.pageSize.getHeight();
+    const imgRatio = canvas.width / canvas.height;
+    const pdfRatio = pdfW / pdfH;
+    let w, h, x, y;
+    if (imgRatio > pdfRatio) {
+      w = pdfW - 20; h = w / imgRatio; x = 10; y = (pdfH - h) / 2;
+    } else {
+      h = pdfH - 20; w = h * imgRatio; x = (pdfW - w) / 2; y = 10;
     }
-  </script>
+    pdf.addImage(imgData, 'PNG', x, y, w, h);
+    pdf.save('hft-trading-pipeline-v12.pdf');
+  });
+}
+
+function exportSVG() {
+  const svg = document.querySelector('#diagram-area svg');
+  const serializer = new XMLSerializer();
+  let source = serializer.serializeToString(svg);
+  source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(source);
+  const link = document.createElement('a');
+  link.download = 'hft-trading-pipeline-v12.svg';
+  link.href = url;
+  link.click();
+}
+</script>
 </body>
 </html>
