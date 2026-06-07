@@ -31,7 +31,11 @@ node_modules/
 
 # Chronicle data files
 *.dat
+data/
 
 # H2 database
 *.mv.db
 *.trace.db
+
+# PID file
+*.pid
