@@ -170,8 +170,8 @@ MERGE INTO trading_sessions (phase, start_time, end_time) KEY(phase)
 
 -- 插入示例证券数据
 MERGE INTO instruments (symbol, symbol_code, name, type, prev_close, limit_up_ratio, limit_down_ratio, lot_size, min_price_increment, commission_rate, commission_per_lot, stamp_duty_rate, transfer_fee_rate, update_time) KEY(symbol)
-    VALUES ('600000', 600000, '浦发银行', 'STOCK', 105000, 0.10, 0.10, 100, 1, 3, 0, 0, 0, CURRENT_TIMESTAMP() * 1000);
+    VALUES ('600000', 600000, '浦发银行', 'STOCK', 105000, 0.10, 0.10, 100, 1, 3, 0, 0, 0, 0);
 MERGE INTO instruments (symbol, symbol_code, name, type, prev_close, limit_up_ratio, limit_down_ratio, lot_size, min_price_increment, commission_rate, commission_per_lot, stamp_duty_rate, transfer_fee_rate, update_time) KEY(symbol)
-    VALUES ('000001', 1, '平安银行', 'STOCK', 125000, 0.10, 0.10, 100, 1, 3, 0, 0, 0, CURRENT_TIMESTAMP() * 1000);
+    VALUES ('000001', 1, '平安银行', 'STOCK', 125000, 0.10, 0.10, 100, 1, 3, 0, 0, 0, 0);
 MERGE INTO instruments (symbol, symbol_code, name, type, prev_close, limit_up_ratio, limit_down_ratio, lot_size, min_price_increment, commission_rate, commission_per_lot, stamp_duty_rate, transfer_fee_rate, update_time) KEY(symbol)
-    VALUES ('000002', 2, '万科A', 'STOCK', 180000, 0.10, 0.10, 100, 1, 3, 0, 0, 0, CURRENT_TIMESTAMP() * 1000);
+    VALUES ('000002', 2, '万科A', 'STOCK', 180000, 0.10, 0.10, 100, 1, 3, 0, 0, 0, 0);

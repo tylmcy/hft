@@ -5,7 +5,6 @@ import com.hft.trading.lifecycle.LifecycleManager;
 import com.hft.trading.matching.OrderBook;
 import com.hft.trading.model.Instrument;
 import com.hft.trading.store.InMemoryInstrumentStore;
-import com.hft.trading.worker.MatchingEngineWorker;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -22,14 +21,11 @@ import java.util.stream.Collectors;
 public class MarketController {
 
     private final InMemoryInstrumentStore instrumentStore;
-    private final MatchingEngineWorker matchingEngineWorker;
     private final LifecycleManager lifecycleManager;
 
     public MarketController(InMemoryInstrumentStore instrumentStore,
-                             MatchingEngineWorker matchingEngineWorker,
                              LifecycleManager lifecycleManager) {
         this.instrumentStore = instrumentStore;
-        this.matchingEngineWorker = matchingEngineWorker;
         this.lifecycleManager = lifecycleManager;
     }
 
@@ -54,7 +50,7 @@ public class MarketController {
      */
     @GetMapping("/quote")
     public ApiResponse<QuoteResponse> getQuote(@RequestParam String symbol) {
-        OrderBook.FiveLevelQuote quote = matchingEngineWorker.getFiveLevelQuote(symbol);
+        OrderBook.FiveLevelQuote quote = lifecycleManager.getMatchingEngineWorker().getFiveLevelQuote(symbol);
 
         if (quote == null) {
             return ApiResponse.error(4003, "品种不存在");

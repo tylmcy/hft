@@ -1,8 +1,8 @@
 # A股交易系统技术方案 V12
 
-> 版本: v12.4 | 日期: 2026-06-04 | 架构师: Trading System Architect
+> 版本: v12.5 | 日期: 2026-06-07 | 架构师: Trading System Architect
 > 状态: **设计完成，可落地开发**
-> 前身: V11.10（两轮审查72问题）→ V12.0（修复14问题）→ V12.1（落地前P0审查修复4项）→ V12.2 → V12.3（多维度审查修复40项：7 P0 + 15 P1 + 18 P2）→ **V12.4（审查修复18项）**
+> 前身: V11.10（两轮审查72问题）→ V12.0（修复14问题）→ V12.1（落地前P0审查修复4项）→ V12.2 → V12.3（多维度审查修复40项：7 P0 + 15 P1 + 18 P2）→ V12.4（审查修复18项）→ **V12.5（前端设计一致性修复6项）**
 
 ---
 
@@ -371,6 +371,28 @@ HTTP下单 → PENDING（已入库，等待入OrderBook）
 | stampDutyRate | int | 印花税率（万分比），预留，当前版本为0 |
 | transferFeeRate | int | 过户费率（万分比），预留，当前版本为0 |
 | updateTime | long | 更新时间戳 |
+
+#### 3.1.5 ApiKey（API密钥）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| apiKeyId | long | API Key ID（雪花算法） |
+| userId | long | 用户ID |
+| apiKey | String | API Key，前缀 ak_ |
+| secretKeyHash | String | Secret Key的bcrypt哈希（不存储明文） |
+| keyType | enum | READ_ONLY / TRADING |
+| allowedInstruments | String | 可交易品种，逗号分隔（股票,期货,期权），仅TRADING类型有效 |
+| status | enum | ACTIVE / DISABLED |
+| createdAt | long | 创建时间戳 |
+| lastUsedAt | long | 最后使用时间戳 |
+
+**认证方式**：HMAC-SHA256签名
+- Header: X-API-Key, X-Timestamp, X-Signature
+- 签名公式: signature = HMAC-SHA256(secretKey, timestamp + method + path + body)
+
+**权限说明**：
+- READ_ONLY：仅限查询接口（账户、持仓、委托、历史、行情）
+- TRADING：READ_ONLY权限 + 下单、撤单
 
 ### 3.2 内存数据存储类
 
@@ -1025,6 +1047,49 @@ HTTP → account_input CQ (DEPOSIT事件)
   → WebSocket推送 account_update
 ```
 
+### 4.7 入金审批流程
+
+```
+【用户申请入金】
+用户提交入金申请 → 写入 deposit_requests 表（状态: PENDING）
+
+【管理员审批】
+GET /api/admin/deposits/pending → 返回待处理列表
+
+POST /api/admin/deposits/{id}/approve
+  → 检查申请有效性
+  → 写入 DEPOSIT 事件到 account_input CQ
+  → 更新 deposit_requests 状态为 APPROVED
+
+POST /api/admin/deposits/{id}/reject
+  → 更新 deposit_requests 状态为 REJECTED
+  → 记录拒绝原因
+```
+
+**入金申请状态**：
+
+| 状态 | 说明 |
+|------|------|
+| PENDING | 待处理 |
+| APPROVED | 已批准 |
+| REJECTED | 已拒绝 |
+
+**入金申请表 deposit_requests**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| requestId | long | 申请ID |
+| userId | long | 用户ID |
+| accountId | long | 账户ID |
+| amount | long | 申请金额（分） |
+| source | String | 资金来源（银行名称等） |
+| reason | String | 申请原因 |
+| status | enum | PENDING / APPROVED / REJECTED |
+| operatorId | long | 操作管理员ID |
+| operatorNote | String | 审批备注 |
+| processedAt | long | 处理时间戳 |
+| createdAt | long | 创建时间戳 |
+
 ---
 
 ## 5. 并发控制与幂等性
@@ -1270,6 +1335,13 @@ SnapshotWorker 定时流程（每60秒）：
 | 管理 | /api/admin/system/recover | POST | 从DEGRADED恢复RUNNING |
 | 管理 | /api/admin/account/{id}/recover | POST | 恢复SUSPENDED账户 |
 | 管理 | /api/admin/system/status | GET | 系统状态查询 |
+| 管理 | /api/admin/deposits/pending | GET | 待处理入金列表 |
+| 管理 | /api/admin/deposits/{id}/approve | POST | 批准入金申请 |
+| 管理 | /api/admin/deposits/{id}/reject | POST | 拒绝入金申请 |
+| 管理 | /api/admin/api-keys | GET | 查询用户API Key列表 |
+| 管理 | /api/admin/api-keys | POST | 创建API Key |
+| 管理 | /api/admin/api-keys/{id} | DELETE | 删除API Key |
+| 管理 | /api/admin/api-keys/{id}/secret | GET | 查看Secret Key（仅创建后首次） |
 
 **权限说明**：
 - `/api/admin/*`接口需要JWT中role=ADMIN，否则返回错误码1009（权限不足）
@@ -1431,6 +1503,67 @@ SnapshotWorker 定时流程（每60秒）：
 - 推送方式：仅推送变动的持仓（增量），非全量
 
 **reason 枚举**：ORDER_FREEZE / ORDER_UNFREEZE / TRADE_BUY / TRADE_SELL / DEPOSIT / COMMISSION / LIQUIDATION / T1_UNLOCK
+
+### 8.4 OpenAPI 设计
+
+OpenAPI 供做市商、量化策略等程序化交易接入使用。
+
+#### 8.4.1 认证方式
+
+| 参数 | 说明 |
+|------|------|
+| X-API-Key | API Key（ak_xxx格式） |
+| X-Timestamp | 请求时间戳（毫秒），允许误差±5分钟 |
+| X-Signature | HMAC-SHA256签名 |
+
+**签名计算**：
+```
+signature = HMAC-SHA256(secretKey, timestamp + method + path + body)
+```
+
+**示例**：
+```
+timestamp = 1716460800000
+method = POST
+path = /openapi/orders
+body = {"symbol":"600000","side":"BUY","price":"1050","quantity":"100"}
+
+signString = "1716460800000POST/openapi/orders{"symbol":"600000","side":"BUY","price":"1050","quantity":"100"}"
+signature = HMAC-SHA256(secretKey, signString)
+```
+
+#### 8.4.2 OpenAPI 接口列表
+
+| 接口 | 方法 | 权限 | 说明 |
+|------|------|------|------|
+| /openapi/ws | WebSocket | READ_ONLY | 行情订阅（market_snapshot, kline, orderbook） |
+| /openapi/account | GET | READ_ONLY | 账户信息 |
+| /openapi/positions | GET | READ_ONLY | 持仓列表 |
+| /openapi/orders/active | GET | READ_ONLY | 当前委托 |
+| /openapi/orders/history | GET | READ_ONLY | 历史订单 |
+| /openapi/trades | GET | READ_ONLY | 历史成交 |
+| /openapi/orders | POST | TRADING | 下单 |
+| /openapi/orders/{orderId} | DELETE | TRADING | 撤单 |
+| /openapi/market/symbols | GET | READ_ONLY | 股票列表 |
+| /openapi/market/kline | GET | READ_ONLY | K线历史 |
+
+#### 8.4.3 WebSocket 订阅限制
+
+| 限制项 | 值 | 说明 |
+|--------|-----|------|
+| 单连接最大订阅symbol数 | 50 | 防止资源滥用 |
+| subscribe/unsubscribe频率 | 10条/秒 | 防止消息洪泛 |
+| 连接空闲超时 | 5分钟 | 无活动自动断开 |
+| 心跳间隔 | 30秒 | 客户端发起ping |
+
+#### 8.4.4 错误码补充
+
+| 错误码 | 含义 | 场景 |
+|--------|------|------|
+| 1010 | API Key无效 | X-API-Key不存在或已禁用 |
+| 1011 | 签名验证失败 | 签名不匹配或时间戳过期 |
+| 1012 | 权限不足 | READ_ONLY Key访问TRADING接口 |
+| 1013 | 品种权限不足 | 尝试交易未授权的品种 |
 
 ---
 
@@ -2064,8 +2197,42 @@ id BIGINT AUTO PK | symbol VARCHAR(10) | interval VARCHAR(5) | open BIGINT | hig
 
 索引：(account_id, created_at)
 
+#### C.12 api_keys（API密钥）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| api_key_id | BIGINT PK | API Key ID |
+| user_id | BIGINT FK → users | 用户ID |
+| api_key | VARCHAR(50) UNIQUE | API Key (ak_xxx) |
+| secret_key_hash | VARCHAR(255) | Secret Key哈希 |
+| key_type | VARCHAR(20) | READ_ONLY / TRADING |
+| allowed_instruments | VARCHAR(100) | 可交易品种（逗号分隔） |
+| status | VARCHAR(20) | ACTIVE / DISABLED |
+| created_at | BIGINT | 创建时间戳 |
+| last_used_at | BIGINT | 最后使用时间戳 |
+
+索引：(user_id), (api_key)
+
+#### C.13 deposit_requests（入金申请）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| request_id | BIGINT PK | 申请ID |
+| user_id | BIGINT | 用户ID |
+| account_id | BIGINT | 账户ID |
+| amount | BIGINT | 申请金额（分） |
+| source | VARCHAR(100) | 资金来源 |
+| reason | VARCHAR(200) | 申请原因 |
+| status | VARCHAR(20) | PENDING / APPROVED / REJECTED |
+| operator_id | BIGINT | 操作管理员ID |
+| operator_note | VARCHAR(500) | 审批备注 |
+| processed_at | BIGINT | 处理时间戳 |
+| created_at | BIGINT | 创建时间戳 |
+
+索引：(status, created_at), (user_id, created_at)
+
 ---
 
-> **文档版本**: v12.4 | **创建日期**: 2026-06-04 | **架构师**: Trading System Architect
-> **前身**: V11.10 → V12.0 → V12.1 → V12.2 → V12.3 → V12.4，共计修复148个问题
+> **文档版本**: v12.5 | **创建日期**: 2026-06-04 | **架构师**: Trading System Architect
+> **前身**: V11.10 → V12.0 → V12.1 → V12.2 → V12.3 → V12.4 → V12.5，共计修复154个问题
 > **状态**: 设计完成，可落地开发

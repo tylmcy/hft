@@ -8,7 +8,7 @@ import com.hft.trading.event.TradingPhase;
 import com.hft.trading.lifecycle.LifecycleManager;
 import com.hft.trading.lifecycle.PhaseManager;
 import com.hft.trading.model.*;
-import com.hft.trading.queue.AccountInputQueue;
+import com.hft.trading.queue.QueueManager;
 import com.hft.trading.service.IdempotencyService;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryInstrumentStore;
@@ -39,7 +39,7 @@ public class OrderController {
     private final InMemoryInstrumentStore instrumentStore;
     private final InMemoryOrderStore orderStore;
     private final IdempotencyService idempotencyService;
-    private final AccountInputQueue accountInputQueue;
+    private final QueueManager queueManager;
     private final PhaseManager phaseManager;
     private final LifecycleManager lifecycleManager;
 
@@ -49,7 +49,7 @@ public class OrderController {
                           InMemoryInstrumentStore instrumentStore,
                           InMemoryOrderStore orderStore,
                           IdempotencyService idempotencyService,
-                          AccountInputQueue accountInputQueue,
+                          QueueManager queueManager,
                           PhaseManager phaseManager,
                           LifecycleManager lifecycleManager) {
         this.idGenerator = idGenerator;
@@ -58,7 +58,7 @@ public class OrderController {
         this.instrumentStore = instrumentStore;
         this.orderStore = orderStore;
         this.idempotencyService = idempotencyService;
-        this.accountInputQueue = accountInputQueue;
+        this.queueManager = queueManager;
         this.phaseManager = phaseManager;
         this.lifecycleManager = lifecycleManager;
     }
@@ -198,7 +198,7 @@ public class OrderController {
         event.setMaxPrice(maxPrice);
         event.setMinPrice(minPrice);
 
-        accountInputQueue.writeEvent(event);
+        queueManager.getAccountInputQueue().writeEvent(event);
 
         logger.info("Order submitted: orderId={}, status=PENDING", orderId);
         return ApiResponse.success(OrderResponse.pending(orderId));
@@ -237,7 +237,7 @@ public class OrderController {
 
         // 写入撤单事件
         AccountInputEvent event = AccountInputEvent.cancelOrder(oid, order.getAccountId(), CancelReason.USER_CANCEL);
-        accountInputQueue.writeEvent(event);
+        queueManager.getAccountInputQueue().writeEvent(event);
 
         logger.info("Cancel request submitted: orderId={}", orderId);
         return ApiResponse.success(OrderResponse.withStatus(oid, "PENDING_CANCEL"));

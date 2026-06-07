@@ -41,9 +41,9 @@ class MarketControllerTest {
 
     @BeforeEach
     void setUp() {
+        when(lifecycleManager.getMatchingEngineWorker()).thenReturn(matchingEngineWorker);
         marketController = new MarketController(
             instrumentStore,
-            matchingEngineWorker,
             lifecycleManager
         );
     }

@@ -7,6 +7,7 @@ import com.hft.trading.lifecycle.LifecycleManager;
 import com.hft.trading.lifecycle.PhaseManager;
 import com.hft.trading.model.*;
 import com.hft.trading.queue.AccountInputQueue;
+import com.hft.trading.queue.QueueManager;
 import com.hft.trading.service.IdempotencyService;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryInstrumentStore;
@@ -52,6 +53,9 @@ class OrderControllerTest {
     private IdempotencyService idempotencyService;
 
     @Mock
+    private QueueManager queueManager;
+
+    @Mock
     private AccountInputQueue accountInputQueue;
 
     @Mock
@@ -64,6 +68,9 @@ class OrderControllerTest {
 
     @BeforeEach
     void setUp() {
+        // Mock queueManager to return accountInputQueue
+        when(queueManager.getAccountInputQueue()).thenReturn(accountInputQueue);
+
         orderController = new OrderController(
             idGenerator,
             accountStore,
@@ -71,7 +78,7 @@ class OrderControllerTest {
             instrumentStore,
             orderStore,
             idempotencyService,
-            accountInputQueue,
+            queueManager,
             phaseManager,
             lifecycleManager
         );

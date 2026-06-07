@@ -83,7 +83,7 @@ class LifecycleManagerTest {
         // Given: 新的临时目录，无快照文件
 
         // When: 启动系统
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // Then: 系统状态应为 RUNNING（因为没有快照文件需要恢复）
         assertEquals(LifecycleManager.SystemStatus.RUNNING, lifecycleManager.getSystemStatus());
@@ -97,7 +97,7 @@ class LifecycleManagerTest {
         // 这个测试验证的是启动流程能正确处理
 
         // When: 启动系统
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // Then: 系统状态应为 RUNNING
         assertEquals(LifecycleManager.SystemStatus.RUNNING, lifecycleManager.getSystemStatus());
@@ -107,7 +107,7 @@ class LifecycleManagerTest {
     @DisplayName("testShutdown_Graceful - 验证优雅关闭序列")
     void testShutdown_Graceful() throws Exception {
         // Given: 系统已启动
-        lifecycleManager.startup();
+        lifecycleManager.start();
         assertEquals(LifecycleManager.SystemStatus.RUNNING, lifecycleManager.getSystemStatus());
 
         // When: 关闭系统
@@ -127,7 +127,7 @@ class LifecycleManagerTest {
         assertEquals(LifecycleManager.SystemStatus.STARTING, lifecycleManager.getSystemStatus());
 
         // When: 启动系统
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // Then: 状态应为 RUNNING
         assertEquals(LifecycleManager.SystemStatus.RUNNING, lifecycleManager.getSystemStatus());
@@ -143,7 +143,7 @@ class LifecycleManagerTest {
     @DisplayName("testIsAcceptingRequests_RUNNING - 验证 RUNNING 时接受请求")
     void testIsAcceptingRequests_RUNNING() throws Exception {
         // Given: 系统已启动
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // When: 状态为 RUNNING
         assertEquals(LifecycleManager.SystemStatus.RUNNING, lifecycleManager.getSystemStatus());
@@ -171,7 +171,7 @@ class LifecycleManagerTest {
     @DisplayName("testIsAcceptingRequests_SHUTTING_DOWN - 验证 SHUTTING_DOWN 时不接受新请求但允许撤单")
     void testIsAcceptingRequests_SHUTTING_DOWN() throws Exception {
         // Given: 系统已启动然后关闭
-        lifecycleManager.startup();
+        lifecycleManager.start();
         lifecycleManager.shutdown();
 
         // When: 状态为 SHUTTING_DOWN
@@ -189,7 +189,7 @@ class LifecycleManagerTest {
     @DisplayName("testWorkerLifecycle - 验证 Worker 正确启动和停止")
     void testWorkerLifecycle() throws Exception {
         // Given: 启动系统
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // When: 获取 Workers
         AccountWorker accountWorker = lifecycleManager.getAccountWorker();
@@ -214,7 +214,7 @@ class LifecycleManagerTest {
     @DisplayName("testFinalSnapshot - 验证关闭时尝试触发最终快照")
     void testFinalSnapshot() throws Exception {
         // Given: 系统已启动
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // When: 关闭系统
         lifecycleManager.shutdown();
@@ -249,13 +249,13 @@ class LifecycleManagerTest {
     @DisplayName("testMultipleStartCalls - 验证多次调用 startup 后的状态")
     void testMultipleStartCalls() throws Exception {
         // When: 第一次启动
-        lifecycleManager.startup();
+        lifecycleManager.start();
         assertEquals(LifecycleManager.SystemStatus.RUNNING, lifecycleManager.getSystemStatus());
 
         // When: 第二次启动（通过重新创建 LifecycleManager）
         // LifecycleManager 的 startup 使用 @PostConstruct，单次调用设计
         // 多次调用不会改变状态
-        lifecycleManager.startup();
+        lifecycleManager.start();
         assertEquals(LifecycleManager.SystemStatus.RUNNING, lifecycleManager.getSystemStatus());
     }
 
@@ -263,7 +263,7 @@ class LifecycleManagerTest {
     @DisplayName("testMultipleShutdownCalls - 验证多次调用 shutdown 的幂等性")
     void testMultipleShutdownCalls() throws Exception {
         // Given: 系统已启动
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // When: 第一次关闭
         lifecycleManager.shutdown();
@@ -280,7 +280,7 @@ class LifecycleManagerTest {
         // Given: 未设置 DataSource
 
         // When: 启动系统
-        lifecycleManager.startup();
+        lifecycleManager.start();
 
         // Then: AsyncPersistenceWorker 应为 null
         assertNull(lifecycleManager.getAsyncPersistenceWorker(),
