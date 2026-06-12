@@ -40,6 +40,11 @@ export interface RefreshTokenRequest {
   refreshToken: string
 }
 
+export interface ChangePasswordRequest {
+  oldPassword: string
+  newPassword: string
+}
+
 // Account types
 export interface AccountInfo {
   accountId: string
@@ -219,4 +224,110 @@ export interface CreateApiKeyResponse {
   apiKeyId: string
   apiKey: string
   secretKey: string // Only returned once on creation
+}
+
+// System Status types
+export interface SystemStatus {
+  heapUsed: number
+  heapMax: number
+  heapUsagePercent: number
+  threadCount: number
+  status: string
+  phase: string
+  activeUsers: number
+  todayOrders: number
+  todayTrades: number
+  todayTurnover: string
+  tps: number
+  p99Latency: number
+  queueWriteRate: number
+  mapSize: number
+  diskUsage: number
+}
+
+// Trading Calendar types
+export interface TradingDay {
+  date: string
+  isTradingDay: boolean
+  description: string
+}
+
+export interface CalendarResponse {
+  yearMonth: string
+  days: TradingDay[]
+}
+
+// Deposit types
+export interface DepositRecord {
+  depositId: string
+  userId: string
+  accountId: string
+  amount: string
+  status: 'APPROVED' | 'REJECTED' | 'PENDING'
+  reason: string
+  processedAt: number
+  processedBy: string
+}
+
+export interface ApproveDepositRequest {
+  depositId: string
+  actualAmount?: string
+  reason?: string
+}
+
+export interface RejectDepositRequest {
+  depositId: string
+  reason?: string
+}
+
+// Account Admin types
+export interface AccountAdminInfo {
+  accountId: string
+  userId: string
+  balance: string
+  available: string
+  frozen: string
+  marginFrozen: string
+  orderFrozen: string
+  unrealizedPnl: string
+  riskRatio: number
+  status: 'NORMAL' | 'WARNING' | 'FROZEN'
+}
+
+// Sina index quote types
+export interface IndexQuote {
+  symbol: string
+  name: string
+  open: string
+  prevClose: string
+  price: string
+  high: string
+  low: string
+  volume: string
+  amount: string
+  date: string
+  time: string
+}
+
+export interface SinaQuote {
+  name: string
+  open: string
+  prevClose: string
+  price: string
+  high: string
+  low: string
+  volume: string
+  amount: string
+  date: string
+  time: string
+  change?: string
+  changePercent?: string
+}
+
+// Ranking types
+export interface RankingResponse {
+  updateTime: string
+  gainers: SinaQuote[]
+  losers: SinaQuote[]
+  topVolume: SinaQuote[]
 }

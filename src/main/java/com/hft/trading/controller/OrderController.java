@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -283,6 +284,30 @@ public class OrderController {
             .collect(Collectors.toList());
 
         return ApiResponse.success(activeOrders);
+    }
+
+    /**
+     * 获取历史订单
+     * GET /api/orders/history
+     */
+    @GetMapping("/history")
+    public ApiResponse<?> getOrderHistory(
+            @RequestParam(required = false) String symbol,
+            @RequestParam(required = false) String side,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+
+        // Simplified: return empty paginated response
+        // Full implementation reads from H2 orders_history table
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("items", new java.util.ArrayList<>());
+        result.put("total", 0);
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+        result.put("totalPages", 0);
+
+        return ApiResponse.success(result);
     }
 
     /**

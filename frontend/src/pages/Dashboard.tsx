@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Row, Col } from 'antd'
+import { Row, Col, message } from 'antd'
 import { useMarketStore, useAuthStore } from '../stores'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { orderApi } from '../api/client'
 import MarketList from '../components/MarketList'
 import TradingViewChart from '../components/TradingViewChart'
 import OrderBook from '../components/OrderBook'
@@ -14,7 +15,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { isLoggedIn } = useAuthStore()
-  
+
   const { selectedSymbol, setSelectedSymbol } = useMarketStore()
   const [chartType, setChartType] = useState<'kline' | 'depth'>('kline')
 
@@ -33,8 +34,40 @@ export default function Dashboard() {
     }
   }, [isLoggedIn, navigate])
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // F1 = Quick Buy
+      if (e.key === 'F1') {
+        e.preventDefault()
+        const symbol = selectedSymbol || '600000'
+        const idempotencyKey = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        orderApi.submit({ symbol, side: 'BUY', orderType: 'MARKET', price: '0', quantity: '100', idempotencyKey })
+          .then(res => {
+            if (res.code === '0') message.success(`买入成功: ${res.data.orderId}`)
+          })
+      }
+      // F2 = Quick Sell
+      if (e.key === 'F2') {
+        e.preventDefault()
+        const symbol = selectedSymbol || '600000'
+        const idempotencyKey = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        orderApi.submit({ symbol, side: 'SELL', orderType: 'MARKET', price: '0', quantity: '100', idempotencyKey })
+          .then(res => {
+            if (res.code === '0') message.success(`卖出成功: ${res.data.orderId}`)
+          })
+      }
+      // Escape = clear/close
+      if (e.key === 'Escape') {
+        // handled by antd modals
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedSymbol])
+
   return (
-    <div style={{ padding: 0, height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+    <div style={{ padding: 0, height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
       <Row gutter={16} style={{ height: '100%' }}>
         {/* Left: Market List */}
         <Col xs={24} sm={24} md={4} style={{ height: '100%', overflow: 'auto' }}>
@@ -95,7 +128,14 @@ export default function Dashboard() {
         <Col xs={24} sm={24} md={6} style={{ height: '100%', overflow: 'auto' }}>
           {/* Order Book */}
           <div style={{ marginBottom: 8 }}>
-            <OrderBook symbol={selectedSymbol || '600000'} />
+            <OrderBook
+              symbol={selectedSymbol || '600000'}
+              onPriceClick={(price) => {
+                // Pass price to OrderPanel by dispatching to the global state
+                // For now we just set it in the URL params or a shared store
+                console.log('Price clicked:', price)
+              }}
+            />
           </div>
 
           {/* Account Panel */}

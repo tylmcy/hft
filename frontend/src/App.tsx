@@ -12,7 +12,8 @@ import History from './pages/History'
 import Profile from './pages/Profile'
 import Layout from './components/Layout'
 import AdminLayout from './components/AdminLayout'
-import { AdminDashboard, InstrumentManager, CashflowManager } from './pages/admin'
+import { AdminDashboard, InstrumentManager, CashflowManager, AdminAccountList, AdminDepositManagement, AdminOrderMonitor, AdminTradeQuery } from './pages/admin'
+import TradingCalendar from './pages/admin/TradingCalendar'
 
 function App() {
   const { isLoggedIn, user } = useAuthStore()
@@ -35,8 +36,13 @@ function App() {
         <Routes>
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
+            <Route path="accounts" element={<AdminAccountList />} />
+            <Route path="deposits" element={<AdminDepositManagement />} />
+            <Route path="orders" element={<AdminOrderMonitor />} />
+            <Route path="trades" element={<AdminTradeQuery />} />
             <Route path="instruments" element={<InstrumentManager />} />
             <Route path="cashflow" element={<CashflowManager />} />
+            <Route path="calendar" element={<TradingCalendar />} />
           </Route>
           {/* User routes for admin */}
           <Route path="/" element={<Layout />}>

@@ -14,11 +14,12 @@ function Login() {
     try {
       const response = await authApi.login(values)
       if (response.code === '0' && response.data) {
-        login(response.data.token, {
-          userId: response.data.userId,
-          username: response.data.username,
-          accountId: response.data.accountId,
-          role: response.data.role || 'TRADER',
+        const data = response.data
+        login(data.accessToken, {
+          userId: data.userId,
+          username: data.username,
+          accountId: data.accountId,
+          role: data.role || 'TRADER',
         })
         message.success('登录成功')
         navigate('/')

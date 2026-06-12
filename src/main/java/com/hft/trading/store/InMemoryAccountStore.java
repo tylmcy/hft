@@ -39,6 +39,18 @@ public class InMemoryAccountStore {
     }
 
     /**
+     * 根据用户ID获取账户
+     */
+    public Account getAccountByUserId(long userId) {
+        for (Account account : accounts.values()) {
+            if (account.getUserId() == userId) {
+                return account;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 移除账户
      */
     public void removeAccount(long accountId) {

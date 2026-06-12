@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Card, Descriptions, Button, Table, Tag, Modal, Form, Select, Space, message, Popconfirm } from 'antd'
-import { UserOutlined, KeyOutlined, PlusOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
+import { Card, Descriptions, Button, Table, Tag, Modal, Form, Select, Space, message, Popconfirm, Input } from 'antd'
+import { UserOutlined, KeyOutlined, PlusOutlined, DeleteOutlined, EyeOutlined, LockOutlined } from '@ant-design/icons'
 import { useAuthStore, useAccountStore } from '../stores'
 import { useNavigate } from 'react-router-dom'
+import { authApi } from '../api/auth'
 import type { ColumnsType } from 'antd/es/table'
 
 interface ApiKeyItem {
@@ -26,6 +27,8 @@ export default function Profile() {
   const [createForm] = Form.useForm()
   const [secretModalVisible, setSecretModalVisible] = useState(false)
   const [currentSecret, setCurrentSecret] = useState<string>('')
+  const [changePasswordModalVisible, setChangePasswordModalVisible] = useState(false)
+  const [changePasswordForm] = Form.useForm()
 
   // Redirect if not logged in
   useEffect(() => {
@@ -107,6 +110,25 @@ export default function Profile() {
   const handleLogout = () => {
     logout()
     navigate('/login')
+  }
+
+  const handleChangePassword = async () => {
+    try {
+      const values = await changePasswordForm.validateFields()
+      const result = await authApi.changePassword({
+        oldPassword: values.oldPassword,
+        newPassword: values.newPassword,
+      })
+      if (result.code === '0') {
+        message.success('密码修改成功')
+        setChangePasswordModalVisible(false)
+        changePasswordForm.resetFields()
+      } else {
+        message.error(result.message || '密码修改失败')
+      }
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '密码修改失败')
+    }
   }
 
   const apiKeyColumns: ColumnsType<ApiKeyItem> = [
@@ -242,9 +264,17 @@ export default function Profile() {
           )}
 
           {/* Logout Button */}
-          <Button onClick={handleLogout} style={{ marginLeft: 16 }}>
-            退出登录
-          </Button>
+          <Space>
+            <Button
+              icon={<LockOutlined />}
+              onClick={() => setChangePasswordModalVisible(true)}
+            >
+              修改密码
+            </Button>
+            <Button onClick={handleLogout}>
+              退出登录
+            </Button>
+          </Space>
         </div>
       </Card>
 
@@ -360,6 +390,69 @@ export default function Profile() {
         <div style={{ color: '#fbbf24', fontSize: 12 }}>
           ⚠️ Secret Key仅显示一次，请妥善保存。关闭此窗口后将无法再次查看。
         </div>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal
+        title="修改密码"
+        open={changePasswordModalVisible}
+        onCancel={() => setChangePasswordModalVisible(false)}
+        footer={null}
+      >
+        <Form
+          form={changePasswordForm}
+          layout="vertical"
+          onFinish={handleChangePassword}
+        >
+          <Form.Item
+            name="oldPassword"
+            label="旧密码"
+            rules={[{ required: true, message: '请输入旧密码' }]}
+          >
+            <Input.Password placeholder="请输入旧密码" />
+          </Form.Item>
+
+          <Form.Item
+            name="newPassword"
+            label="新密码"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码长度至少6位' },
+            ]}
+          >
+            <Input.Password placeholder="请输入新密码" />
+          </Form.Item>
+
+          <Form.Item
+            name="confirmPassword"
+            label="确认新密码"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: '请确认新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(new Error('两次输入的密码不一致'))
+                },
+              }),
+            ]}
+          >
+            <Input.Password placeholder="请再次输入新密码" />
+          </Form.Item>
+
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">
+                确认修改
+              </Button>
+              <Button onClick={() => setChangePasswordModalVisible(false)}>
+                取消
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   )

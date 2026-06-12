@@ -1,11 +1,13 @@
+import { useEffect, useState, useCallback } from 'react'
 import { Card, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons'
+import { marketApi } from '../api/client'
+import type { SinaQuote } from '../api/types'
 
 interface RankingItem {
   key: string
   rank: number
-  symbol: string
   name: string
   price: string
   changePercent: string
@@ -18,55 +20,58 @@ interface TopRankingProps {
   onSymbolClick?: (symbol: string) => void
 }
 
-// Mock data for demonstration
-const MOCK_GAINERS: RankingItem[] = [
-  { key: '1', rank: 1, symbol: '600519', name: '贵州茅台', price: '1856.00', changePercent: '+10.00%' },
-  { key: '2', rank: 2, symbol: '000858', name: '五粮液', price: '156.78', changePercent: '+9.98%' },
-  { key: '3', rank: 3, symbol: '601318', name: '中国平安', price: '45.67', changePercent: '+8.45%' },
-  { key: '4', rank: 4, symbol: '600036', name: '招商银行', price: '32.45', changePercent: '+7.23%' },
-  { key: '5', rank: 5, symbol: '000333', name: '美的集团', price: '67.89', changePercent: '+6.78%' },
-]
-
-const MOCK_LOSERS: RankingItem[] = [
-  { key: '1', rank: 1, symbol: '002415', name: '海康威视', price: '28.56', changePercent: '-9.87%' },
-  { key: '2', rank: 2, symbol: '300750', name: '宁德时代', price: '178.90', changePercent: '-8.56%' },
-  { key: '3', rank: 3, symbol: '600900', name: '长江电力', price: '25.34', changePercent: '-7.23%' },
-  { key: '4', rank: 4, symbol: '601012', name: '隆基绿能', price: '18.67', changePercent: '-6.45%' },
-  { key: '5', rank: 5, symbol: '000651', name: '格力电器', price: '35.78', changePercent: '-5.89%' },
-]
-
-const MOCK_VOLUME: RankingItem[] = [
-  { key: '1', rank: 1, symbol: '600519', name: '贵州茅台', price: '1856.00', changePercent: '+10.00%', volume: '125.6亿' },
-  { key: '2', rank: 2, symbol: '000858', name: '五粮液', price: '156.78', changePercent: '+9.98%', volume: '98.3亿' },
-  { key: '3', rank: 3, symbol: '601318', name: '中国平安', price: '45.67', changePercent: '+8.45%', volume: '87.5亿' },
-  { key: '4', rank: 4, symbol: '600036', name: '招商银行', price: '32.45', changePercent: '+7.23%', volume: '76.2亿' },
-  { key: '5', rank: 5, symbol: '000333', name: '美的集团', price: '67.89', changePercent: '+6.78%', volume: '65.8亿' },
-]
-
 const TYPE_CONFIG = {
   gainers: {
     title: '上涨Top5',
     borderColor: '#34d399',
     bgColor: 'rgba(6, 78, 59, 0.3)',
-    data: MOCK_GAINERS,
   },
   losers: {
     title: '下跌Top5',
     borderColor: '#fb7185',
     bgColor: 'rgba(120, 53, 15, 0.3)',
-    data: MOCK_LOSERS,
   },
   volume: {
     title: '成交量Top5',
     borderColor: '#a78bfa',
     bgColor: 'rgba(8, 51, 68, 0.4)',
-    data: MOCK_VOLUME,
   },
 }
 
-export function TopRanking({ type, limit = 5, onSymbolClick }: TopRankingProps) {
+export function TopRanking({ type, limit = 5, onSymbolClick: _onSymbolClick }: TopRankingProps) {
+  const [data, setData] = useState<RankingItem[]>([])
+  const [loading, setLoading] = useState(true)
   const config = TYPE_CONFIG[type]
-  const data = config.data.slice(0, limit)
+
+  const fetchRankings = useCallback(async () => {
+    try {
+      const res = await marketApi.getRankings()
+      if (res.code === '0' && res.data) {
+        const source = type === 'gainers' ? res.data.gainers
+          : type === 'losers' ? res.data.losers
+          : res.data.topVolume
+
+        setData(source.slice(0, limit).map((item: SinaQuote, idx: number) => ({
+          key: String(idx),
+          rank: idx + 1,
+          name: item.name || '--',
+          price: item.price || '--',
+          changePercent: item.changePercent || '0.00%',
+          volume: item.volume ? formatVolume(item.volume) : undefined,
+        })))
+      }
+    } catch (e) {
+      console.warn('Failed to fetch rankings:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [type, limit])
+
+  useEffect(() => {
+    fetchRankings()
+    const timer = setInterval(fetchRankings, 15000)
+    return () => clearInterval(timer)
+  }, [fetchRankings])
 
   const columns: ColumnsType<RankingItem> = [
     {
@@ -83,22 +88,9 @@ export function TopRanking({ type, limit = 5, onSymbolClick }: TopRankingProps) 
       ),
     },
     {
-      title: '代码',
-      dataIndex: 'symbol',
-      width: 70,
-      render: (symbol: string) => (
-        <span
-          style={{ color: '#fff', cursor: 'pointer' }}
-          onClick={() => onSymbolClick?.(symbol)}
-        >
-          {symbol}
-        </span>
-      ),
-    },
-    {
       title: '名称',
       dataIndex: 'name',
-      width: 80,
+      width: 90,
       render: (name: string) => <span style={{ color: '#94a3b8' }}>{name}</span>,
     },
     {
@@ -111,7 +103,7 @@ export function TopRanking({ type, limit = 5, onSymbolClick }: TopRankingProps) 
       ? [{
           title: '成交额',
           dataIndex: 'volume',
-          width: 70,
+          width: 80,
           render: (volume: string) => (
             <span style={{ color: '#a78bfa' }}>{volume}</span>
           ),
@@ -143,6 +135,7 @@ export function TopRanking({ type, limit = 5, onSymbolClick }: TopRankingProps) 
         </span>
       }
       size="small"
+      loading={loading}
       style={{
         background: config.bgColor,
         borderColor: config.borderColor,
@@ -162,6 +155,14 @@ export function TopRanking({ type, limit = 5, onSymbolClick }: TopRankingProps) 
       />
     </Card>
   )
+}
+
+function formatVolume(v: string): string {
+  const n = parseFloat(v)
+  if (isNaN(n)) return v
+  if (n >= 1e8) return (n / 1e8).toFixed(1) + '亿'
+  if (n >= 1e4) return (n / 1e4).toFixed(1) + '万'
+  return v
 }
 
 export function TopGainers(props: Omit<TopRankingProps, 'type'>) {

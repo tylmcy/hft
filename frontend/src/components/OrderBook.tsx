@@ -1,4 +1,5 @@
 import { Table } from 'antd'
+import { QuickOrder } from './QuickOrder'
 import type { ColumnsType } from 'antd/es/table'
 
 interface OrderBookProps {
@@ -15,7 +16,7 @@ interface OrderBookRow {
   type: 'bid' | 'ask'
 }
 
-export function OrderBook({ onPriceClick }: OrderBookProps) {
+export function OrderBook({ symbol, onPriceClick }: OrderBookProps) {
   // Mock data for demonstration
   const mockBids: OrderBookRow[] = [
     { key: 'bid-1', level: '买一', price: '10.00', volume: '1890', percent: 80, type: 'bid' },
@@ -32,6 +33,10 @@ export function OrderBook({ onPriceClick }: OrderBookProps) {
     { key: 'ask-4', level: '卖四', price: '10.04', volume: '987', percent: 45, type: 'ask' },
     { key: 'ask-5', level: '卖五', price: '10.05', volume: '1234', percent: 55, type: 'ask' },
   ]
+
+  // Get best bid/ask prices for quick order
+  const bestBid = mockBids[0]?.price || '10.00'
+  const bestAsk = mockAsks[mockAsks.length - 1]?.price || '10.01'
 
   const columns: ColumnsType<OrderBookRow> = [
     {
@@ -132,6 +137,15 @@ export function OrderBook({ onPriceClick }: OrderBookProps) {
         showHeader={false}
         style={{ background: 'transparent' }}
       />
+
+      {/* Quick Order Panel */}
+      <div style={{ marginTop: 12 }}>
+        <QuickOrder
+          symbol={symbol || '600000'}
+          bidPrice={bestBid}
+          askPrice={bestAsk}
+        />
+      </div>
     </div>
   )
 }

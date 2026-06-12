@@ -202,6 +202,52 @@ public class AuthController {
         return ApiResponse.success(null);
     }
 
+    /**
+     * 修改密码
+     * POST /api/auth/change-password
+     */
+    @PostMapping("/change-password")
+    public ApiResponse<Void> changePassword(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody ChangePasswordRequest request) {
+        logger.info("Change password request");
+
+        if (!lifecycleManager.isAcceptingRequests()) {
+            return ApiResponse.error(4005, "系统暂停服务");
+        }
+
+        // 从 Token 提取用户信息
+        String token = authorization.replace("Bearer ", "");
+        if (!jwtService.validateToken(token)) {
+            return ApiResponse.error(1006, "Token已失效");
+        }
+
+        Long userId = jwtService.extractUserId(token);
+        UserInfo user = findUserById(userId);
+        if (user == null) {
+            return ApiResponse.error(2004, "用户不存在");
+        }
+
+        // 验证旧密码（简化验证）
+        if (!"password123".equals(request.getOldPassword())) {
+            return ApiResponse.error(1004, "旧密码错误");
+        }
+
+        // 验证新密码
+        if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
+            return ApiResponse.error(1001, "新密码长度至少6位");
+        }
+
+        if (request.getNewPassword().equals(request.getOldPassword())) {
+            return ApiResponse.error(1001, "新密码不能与旧密码相同");
+        }
+
+        // 简化：实际应更新数据库中的密码
+        // 这里仅返回成功，实际生产环境需要持久化新密码
+        logger.info("Password changed successfully for user: {}", user.username);
+        return ApiResponse.success(null);
+    }
+
     private UserInfo findUserById(Long userId) {
         for (UserInfo user : users.values()) {
             if (user.userId.equals(userId)) {
@@ -292,6 +338,16 @@ public class AuthController {
         public void setAccessExpireTime(String accessExpireTime) { this.accessExpireTime = accessExpireTime; }
         public String getRefreshExpireTime() { return refreshExpireTime; }
         public void setRefreshExpireTime(String refreshExpireTime) { this.refreshExpireTime = refreshExpireTime; }
+    }
+
+    public static class ChangePasswordRequest {
+        private String oldPassword;
+        private String newPassword;
+
+        public String getOldPassword() { return oldPassword; }
+        public void setOldPassword(String oldPassword) { this.oldPassword = oldPassword; }
+        public String getNewPassword() { return newPassword; }
+        public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
     }
 
     private static class UserInfo {

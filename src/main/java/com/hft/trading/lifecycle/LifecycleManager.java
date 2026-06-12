@@ -2,6 +2,7 @@ package com.hft.trading.lifecycle;
 
 import com.hft.trading.event.AccountInputEvent;
 import com.hft.trading.event.TradingPhase;
+import com.hft.trading.service.SinaInstrumentService;
 import com.hft.trading.queue.*;
 import com.hft.trading.recovery.RecoveryManager;
 import com.hft.trading.store.*;
@@ -15,6 +16,8 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -116,7 +119,12 @@ public class LifecycleManager implements SmartLifecycle {
             // 1. 初始化 Workers
             initializeWorkers();
 
-            // 2. 检查是否需要恢复
+            // 2. SOD: 从新浪初始化品种数据（首次启动且无恢复时）
+            if (!needsRecovery()) {
+                initializeInstruments();
+            }
+
+            // 3. 检查是否需要恢复
             if (needsRecovery()) {
                 systemStatus = SystemStatus.RECOVERING;
                 logger.info("System status: RECOVERING");
@@ -257,6 +265,48 @@ public class LifecycleManager implements SmartLifecycle {
         logger.info("Workers initialized: AccountWorker, MatchingEngineWorker, ClearingWorker, RecoveryManager" +
             (asyncPersistenceWorker != null ? ", AsyncPersistenceWorker" : "") +
             (marketDataPublisher != null ? ", MarketDataPublisher" : ""));
+    }
+
+    /**
+     * SOD: 从新浪初始化品种数据
+     *
+     * 流程：
+     * 1. 定义需要初始化的品种代码列表
+     * 2. 从新浪拉取昨收价
+     * 3. 生成 INSTRUMENT_INIT 事件写入 AccountInput CQ
+     * 4. AccountWorker 处理后将品种注册到 InMemoryInstrumentStore
+     */
+    private void initializeInstruments() {
+        logger.info("SOD: Initializing instruments from Sina...");
+
+        try {
+            // A股常见品种代码
+            List<String> symbols = new ArrayList<>();
+            // 沪市
+            symbols.add("600000"); symbols.add("600519"); symbols.add("600036");
+            symbols.add("601318"); symbols.add("600900"); symbols.add("601012");
+            symbols.add("600887"); symbols.add("600276"); symbols.add("600585");
+            symbols.add("601166"); symbols.add("600030"); symbols.add("600104");
+            symbols.add("600690"); symbols.add("600809"); symbols.add("600028");
+            // 深市
+            symbols.add("000001"); symbols.add("000858"); symbols.add("000333");
+            symbols.add("000651"); symbols.add("000002"); symbols.add("000725");
+            symbols.add("000568"); symbols.add("000063"); symbols.add("000100");
+            symbols.add("000538"); symbols.add("000625"); symbols.add("000776");
+            // 创业板
+            symbols.add("300750"); symbols.add("300059"); symbols.add("300124");
+            symbols.add("300274"); symbols.add("300015"); symbols.add("300413");
+            symbols.add("300433"); symbols.add("300782");
+
+            SinaInstrumentService sinaService = new SinaInstrumentService();
+            int count = sinaService.initializeInstruments(symbols, queueManager.getAccountInputQueue());
+
+            logger.info("SOD: Instrument initialization complete: {} instruments initialized from Sina", count);
+
+        } catch (Exception e) {
+            logger.warn("SOD: Failed to initialize instruments from Sina: {}", e.getMessage());
+            logger.warn("SOD: Instruments can be added later via admin API");
+        }
     }
 
     /**
@@ -474,6 +524,16 @@ public class LifecycleManager implements SmartLifecycle {
      */
     public boolean canCancelOrder() {
         return systemStatus == SystemStatus.RUNNING || systemStatus == SystemStatus.SHUTTING_DOWN;
+    }
+
+    /**
+     * 从 DEGRADED 恢复为 RUNNING
+     */
+    public void recover() {
+        if (systemStatus == SystemStatus.DEGRADED) {
+            logger.info("Recovering from DEGRADED to RUNNING");
+            systemStatus = SystemStatus.RUNNING;
+        }
     }
 
     private void sleep(long ms) {

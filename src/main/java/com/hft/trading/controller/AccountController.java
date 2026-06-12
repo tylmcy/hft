@@ -11,7 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -76,6 +76,32 @@ public class AccountController {
             .collect(Collectors.toList());
 
         return ApiResponse.success(response);
+    }
+
+    /**
+     * 获取资金流水
+     * GET /api/account/cashflow
+     */
+    @GetMapping("/cashflow")
+    public ApiResponse<?> getCashflow(
+            @RequestParam(required = false) String accountId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+
+        if (!lifecycleManager.isAcceptingRequests()) {
+            return ApiResponse.error(4005, "系统暂停服务");
+        }
+
+        // Simplified: return empty paginated response
+        // Full implementation reads from H2 cashflow_history table
+        Map<String, Object> result = new HashMap<>();
+        result.put("items", new ArrayList<>());
+        result.put("total", 0);
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+        result.put("totalPages", 0);
+
+        return ApiResponse.success(result);
     }
 
     /**

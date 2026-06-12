@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Input, Button, Radio, message, Tooltip } from 'antd'
+import { Input, Button, Radio, message, Tooltip, Space } from 'antd'
 import {
   CaretUpOutlined,
   CaretDownOutlined,
@@ -11,9 +11,12 @@ import type { SubmitOrderRequest } from '../api/types'
 
 type OrderSide = 'BUY' | 'SELL'
 type OrderType = 'LIMIT' | 'MARKET' | 'FAK' | 'FOK'
+type PositionEffect = 'OPEN' | 'CLOSE'  // For futures
+type OptionType = 'CALL' | 'PUT'  // For options
 
 interface OrderPanelProps {
   symbol: string
+  instrumentType?: 'STOCK' | 'FUTURE' | 'OPTION'
   onOrderSuccess?: (orderId: string) => void
 }
 
@@ -22,7 +25,7 @@ function generateIdempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 }
 
-export function OrderPanel({ symbol, onOrderSuccess }: OrderPanelProps) {
+export function OrderPanel({ symbol, instrumentType = 'STOCK', onOrderSuccess }: OrderPanelProps) {
   const { account } = useAccountStore()
   const { submitting, setSubmitting } = useOrderStore()
   const { symbols } = useMarketStore()
@@ -32,6 +35,9 @@ export function OrderPanel({ symbol, onOrderSuccess }: OrderPanelProps) {
   const [orderType, setOrderType] = useState<OrderType>('LIMIT')
   const [price, setPrice] = useState<string>('')
   const [quantity, setQuantity] = useState<string>('100')
+  const [positionEffect, setPositionEffect] = useState<PositionEffect>('OPEN')
+  const [optionType, setOptionType] = useState<OptionType>('CALL')
+  const [contract, setContract] = useState<string>('')  // For futures/options
 
   // Get symbol info
   const symbolInfo = symbols.find((s) => s.symbol === symbol)
@@ -234,9 +240,8 @@ export function OrderPanel({ symbol, onOrderSuccess }: OrderPanelProps) {
           style={{ background: '#1e293b', borderColor: '#334155', color: 'white' }}
         />
         <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-          <Button size="small" onClick={() => setQuickQuantity(25)}>1/4</Button>
           <Button size="small" onClick={() => setQuickQuantity(50)}>1/2</Button>
-          <Button size="small" onClick={() => setQuickQuantity(75)}>3/4</Button>
+          <Button size="small" onClick={() => setQuickQuantity(33)}>1/3</Button>
           <Button size="small" onClick={() => setQuickQuantity(100)}>全部</Button>
         </div>
       </div>
@@ -248,6 +253,49 @@ export function OrderPanel({ symbol, onOrderSuccess }: OrderPanelProps) {
             <span style={{ color: '#94a3b8' }}>可用资金</span>
             <span style={{ color: '#22d3ee' }}>{parseFloat(account.available).toFixed(2)} 元</span>
           </div>
+        </div>
+      )}
+
+      {/* Futures options */}
+      {instrumentType === 'FUTURE' && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 8, color: '#a78bfa', fontSize: 12 }}>
+            期货选项
+          </label>
+          <Radio.Group
+            value={positionEffect}
+            onChange={(e) => setPositionEffect(e.target.value)}
+            size="small"
+          >
+            <Radio.Button value="OPEN">开仓</Radio.Button>
+            <Radio.Button value="CLOSE">平仓</Radio.Button>
+          </Radio.Group>
+        </div>
+      )}
+
+      {/* Options options */}
+      {instrumentType === 'OPTION' && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 8, color: '#fbbf24', fontSize: 12 }}>
+            期权选项
+          </label>
+          <Space>
+            <Radio.Group
+              value={optionType}
+              onChange={(e) => setOptionType(e.target.value)}
+              size="small"
+            >
+              <Radio.Button value="CALL">Call</Radio.Button>
+              <Radio.Button value="PUT">Put</Radio.Button>
+            </Radio.Group>
+            <Input
+              value={contract}
+              onChange={(e) => setContract(e.target.value)}
+              placeholder="合约代码"
+              size="small"
+              style={{ background: '#1e293b', borderColor: '#334155', color: 'white', width: 100 }}
+            />
+          </Space>
         </div>
       )}
 

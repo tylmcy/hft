@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons'
 import { useAuthStore, useAccountStore } from '../stores'
 
-const { Header, Content, Sider } = AntLayout
+const { Header, Content } = AntLayout
 const { Text } = Typography
 
 function Layout() {
@@ -67,91 +67,87 @@ function Layout() {
           background: 'rgba(8, 51, 68, 0.4)',
           borderBottom: '1px solid #22d3ee',
           padding: '0 24px',
+          height: 56,
+          lineHeight: '56px',
         }}
       >
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Left: Logo + Menu */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           <StockOutlined style={{ fontSize: 24, color: '#22d3ee' }} />
-          <Text style={{ fontSize: 18, fontWeight: 700, color: '#22d3ee' }}>
-            HFT Trading
-          </Text>
-        </div>
-
-        {/* Account Info */}
-        {account && (
-          <Space size={24} style={{ margin: '0 auto' }}>
-            <div style={{ textAlign: 'center' }}>
-              <Text style={{ color: '#94a3b8', fontSize: 12 }}>总资产</Text>
-              <br />
-              <Text style={{ color: '#fff', fontWeight: 600 }}>
-                {parseFloat(account.balance).toLocaleString()}
-              </Text>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <Text style={{ color: '#22d3ee', fontSize: 12 }}>可用</Text>
-              <br />
-              <Text style={{ color: '#22d3ee', fontWeight: 600 }}>
-                {parseFloat(account.available).toLocaleString()}
-              </Text>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <Text style={{ color: '#fbbf24', fontSize: 12 }}>冻结</Text>
-              <br />
-              <Text style={{ color: '#fbbf24', fontWeight: 600 }}>
-                {parseFloat(account.frozen).toLocaleString()}
-              </Text>
-            </div>
-          </Space>
-        )}
-
-        {/* User Menu */}
-        <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }}>
-          <Button
-            icon={<UserOutlined />}
+          <Text
             style={{
-              background: 'rgba(34, 211, 238, 0.2)',
-              borderColor: '#22d3ee',
+              fontSize: 18,
+              fontWeight: 700,
               color: '#22d3ee',
+              marginRight: 24,
+              whiteSpace: 'nowrap',
             }}
           >
-            {user?.username || '用户'}
-          </Button>
-        </Dropdown>
-      </Header>
-
-      <AntLayout>
-        <Sider
-          width={200}
-          style={{
-            background: 'rgba(15, 23, 42, 0.5)',
-            borderRight: '1px solid #1e293b',
-          }}
-        >
+            HFT Trading
+          </Text>
           <Menu
-            mode="inline"
+            mode="horizontal"
             selectedKeys={[location.pathname]}
             items={menuItems}
             onClick={handleMenuClick}
             style={{
-              height: '100%',
+              flex: 1,
+              minWidth: 0,
               background: 'transparent',
-              color: '#94a3b8',
+              borderBottom: 'none',
             }}
             theme="dark"
           />
-        </Sider>
+        </div>
 
-        <Content
-          style={{
-            padding: 24,
-            background: '#020617',
-            minHeight: 'calc(100vh - 64px)',
-            overflow: 'auto',
-          }}
-        >
-          <Outlet />
-        </Content>
-      </AntLayout>
+        {/* Right: Account Info + User Menu */}
+        <Space size={20} style={{ flexShrink: 0 }}>
+          {account && (
+            <>
+              <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
+                <Text style={{ color: '#94a3b8', fontSize: 11, display: 'block' }}>总资产</Text>
+                <Text style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>
+                  {parseFloat(account.balance).toLocaleString()}
+                </Text>
+              </div>
+              <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
+                <Text style={{ color: '#22d3ee', fontSize: 11, display: 'block' }}>可用</Text>
+                <Text style={{ color: '#22d3ee', fontWeight: 600, fontSize: 13 }}>
+                  {parseFloat(account.available).toLocaleString()}
+                </Text>
+              </div>
+              <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
+                <Text style={{ color: '#fbbf24', fontSize: 11, display: 'block' }}>冻结</Text>
+                <Text style={{ color: '#fbbf24', fontWeight: 600, fontSize: 13 }}>
+                  {parseFloat(account.frozen).toLocaleString()}
+                </Text>
+              </div>
+            </>
+          )}
+
+          <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }}>
+            <Button
+              icon={<UserOutlined />}
+              style={{
+                background: 'rgba(34, 211, 238, 0.2)',
+                borderColor: '#22d3ee',
+                color: '#22d3ee',
+              }}
+            >
+              {user?.username || '用户'}
+            </Button>
+          </Dropdown>
+        </Space>
+      </Header>
+
+      <Content
+        style={{
+          background: '#020617',
+          minHeight: 'calc(100vh - 56px)',
+        }}
+      >
+        <Outlet />
+      </Content>
     </AntLayout>
   )
 }

@@ -14,6 +14,15 @@ import {
   Cashflow,
   PaginationParams,
   PaginatedResponse,
+  SystemStatus,
+  CalendarResponse,
+  DepositRecord,
+  ApproveDepositRequest,
+  RejectDepositRequest,
+  AccountAdminInfo,
+  IndexQuote,
+  SinaQuote,
+  RankingResponse,
 } from './types'
 
 // ==================== Account API ====================
@@ -67,6 +76,14 @@ export const tradeApi = {
 // ==================== Market API ====================
 
 export const marketApi = {
+  // GET /api/market/indices (指数行情，从新浪拉取)
+  getIndices: () =>
+    api.get<unknown, ApiResponse<IndexQuote[]>>('/market/indices'),
+
+  // GET /api/market/sina?codes=sh600000 (通用新浪行情代理)
+  getSinaQuotes: (codes: string) =>
+    api.get<unknown, ApiResponse<SinaQuote[]>>('/market/sina', { params: { codes } }),
+
   // GET /api/market/symbols
   getSymbols: () =>
     api.get<unknown, ApiResponse<Symbol[]>>('/market/symbols'),
@@ -92,6 +109,10 @@ export const marketApi = {
     limit?: number
   }) =>
     api.get<unknown, ApiResponse<Kline[]>>('/market/kline', { params }),
+
+  // GET /api/market/rankings (涨跌排行榜)
+  getRankings: () =>
+    api.get<unknown, ApiResponse<RankingResponse>>('/market/rankings'),
 }
 
 // ==================== Admin API ====================
@@ -115,7 +136,24 @@ export const adminApi = {
     }>>('/admin/deposit/correction', data),
 
   getDeposits: (params?: { userId?: string; startDate?: string; endDate?: string }) =>
-    api.get<unknown, ApiResponse<PaginatedResponse<any>>>('/admin/deposits', { params }),
+    api.get<unknown, ApiResponse<PaginatedResponse<DepositRecord>>>('/admin/deposits', { params }),
+
+  getPendingDeposits: () =>
+    api.get<unknown, ApiResponse<DepositRecord[]>>('/admin/deposits/pending'),
+
+  getDepositHistory: (params?: PaginationParams) =>
+    api.get<unknown, ApiResponse<PaginatedResponse<DepositRecord>>>('/admin/deposits/history', { params }),
+
+  approveDeposit: (data: ApproveDepositRequest) =>
+    api.post<unknown, ApiResponse<{
+      depositId: string
+      accountId: string
+      newBalance: string
+      newAvailable: string
+    }>>('/admin/deposit/approve', data),
+
+  rejectDeposit: (data: RejectDepositRequest) =>
+    api.post<unknown, ApiResponse<void>>('/admin/deposit/reject', data),
 
   // Instruments
   addInstrument: (data: {
@@ -133,18 +171,24 @@ export const adminApi = {
 
   // System
   getSystemStatus: () =>
-    api.get<unknown, ApiResponse<{
-      status: string
-      phase: string
-      activeUsers: number
-      todayOrders: number
-      todayTrades: number
-      tps: number
-      p99Latency: number
-    }>>('/admin/system/status'),
+    api.get<unknown, ApiResponse<SystemStatus>>('/admin/system/status'),
 
   recover: () =>
     api.post<unknown, ApiResponse<void>>('/admin/system/recover'),
+
+  // Calendar
+  getCalendar: (yearMonth?: string) =>
+    api.get<unknown, ApiResponse<CalendarResponse>>('/admin/calendar', { params: { yearMonth } }),
+
+  updateCalendar: (data: { date: string; isTradingDay: boolean }) =>
+    api.post<unknown, ApiResponse<void>>('/admin/calendar', data),
+
+  setHolidays: (data: { dates: string[]; reason: string }) =>
+    api.post<unknown, ApiResponse<void>>('/admin/calendar/holidays', data),
+
+  // Accounts
+  getAccounts: (params?: { page?: number; pageSize?: number; status?: string }) =>
+    api.get<unknown, ApiResponse<PaginatedResponse<AccountAdminInfo>>>('/admin/accounts', { params }),
 
   // API Keys
   getApiKeys: (userId?: string) =>

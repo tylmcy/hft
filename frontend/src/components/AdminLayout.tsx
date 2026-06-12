@@ -8,10 +8,11 @@ import {
   UserOutlined,
   LogoutOutlined,
   StockOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../stores'
 
-const { Header, Content, Sider } = AntLayout
+const { Header, Content } = AntLayout
 const { Text } = Typography
 
 function AdminLayout() {
@@ -26,8 +27,13 @@ function AdminLayout() {
 
   const menuItems = [
     { key: '/admin', icon: <DashboardOutlined />, label: '系统概览' },
-    { key: '/admin/instruments', icon: <StockOutlined />, label: '品种管理' },
+    { key: '/admin/accounts', icon: <UserOutlined />, label: '账户管理' },
+    { key: '/admin/deposits', icon: <DollarOutlined />, label: '入金管理' },
+    { key: '/admin/orders', icon: <FileTextOutlined />, label: '订单监控' },
+    { key: '/admin/trades', icon: <StockOutlined />, label: '成交查询' },
     { key: '/admin/cashflow', icon: <DollarOutlined />, label: '资金流水' },
+    { key: '/admin/instruments', icon: <StockOutlined />, label: '品种管理' },
+    { key: '/admin/calendar', icon: <CalendarOutlined />, label: '交易日历' },
     { key: '/', icon: <FileTextOutlined />, label: '交易端' },
   ]
 
@@ -55,73 +61,68 @@ function AdminLayout() {
           background: 'rgba(120, 53, 15, 0.3)',
           borderBottom: '1px solid #fbbf24',
           padding: '0 24px',
+          height: 56,
+          lineHeight: '56px',
         }}
       >
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Left: Logo + Menu */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           <SettingOutlined style={{ fontSize: 24, color: '#fbbf24' }} />
-          <Text style={{ fontSize: 18, fontWeight: 700, color: '#fbbf24' }}>
-            HFT Admin
-          </Text>
-          <Text style={{ fontSize: 12, color: '#fbbf24', marginLeft: 8 }}>
-            管理后台
-          </Text>
-        </div>
-
-        {/* Admin Info */}
-        <Space style={{ margin: '0 auto' }}>
-          <Text style={{ color: '#94a3b8' }}>管理员: {user?.username}</Text>
-          <Text style={{ color: '#fbbf24' }}>角色: SUPER_ADMIN</Text>
-        </Space>
-
-        {/* User Menu */}
-        <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }}>
-          <Button
-            icon={<UserOutlined />}
+          <Text
             style={{
-              background: 'rgba(251, 191, 36, 0.2)',
-              borderColor: '#fbbf24',
+              fontSize: 18,
+              fontWeight: 700,
               color: '#fbbf24',
+              marginRight: 24,
+              whiteSpace: 'nowrap',
             }}
           >
-            {user?.username || '管理员'}
-          </Button>
-        </Dropdown>
-      </Header>
-
-      <AntLayout>
-        <Sider
-          width={200}
-          style={{
-            background: 'rgba(15, 23, 42, 0.5)',
-            borderRight: '1px solid #1e293b',
-          }}
-        >
+            HFT Admin
+          </Text>
+          <Text style={{ fontSize: 12, color: '#fbbf24', marginRight: 16 }}>
+            管理后台
+          </Text>
           <Menu
-            mode="inline"
+            mode="horizontal"
             selectedKeys={[location.pathname]}
             items={menuItems}
             onClick={handleMenuClick}
             style={{
-              height: '100%',
+              flex: 1,
+              minWidth: 0,
               background: 'transparent',
-              color: '#94a3b8',
+              borderBottom: 'none',
             }}
             theme="dark"
           />
-        </Sider>
+        </div>
 
-        <Content
-          style={{
-            padding: 24,
-            background: '#020617',
-            minHeight: 'calc(100vh - 64px)',
-            overflow: 'auto',
-          }}
-        >
-          <Outlet />
-        </Content>
-      </AntLayout>
+        {/* Right: Admin Info + User Menu */}
+        <Space style={{ flexShrink: 0 }}>
+          <Text style={{ color: '#94a3b8', fontSize: 13 }}>管理员: {user?.username}</Text>
+          <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }}>
+            <Button
+              icon={<UserOutlined />}
+              style={{
+                background: 'rgba(251, 191, 36, 0.2)',
+                borderColor: '#fbbf24',
+                color: '#fbbf24',
+              }}
+            >
+              {user?.username || '管理员'}
+            </Button>
+          </Dropdown>
+        </Space>
+      </Header>
+
+      <Content
+        style={{
+          background: '#020617',
+          minHeight: 'calc(100vh - 56px)',
+        }}
+      >
+        <Outlet />
+      </Content>
     </AntLayout>
   )
 }
