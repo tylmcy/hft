@@ -197,6 +197,18 @@ public class WebSocketServer {
     }
 
     /**
+     * 推送消息给所有订阅该频道的连接（无 symbol 过滤）
+     */
+    public void broadcast(String channelName, Object message) {
+        for (Channel channel : activeChannels) {
+            Set<String> subscriptions = channelSubscriptions.get(channel);
+            if (subscriptions != null && subscriptions.contains(channelName)) {
+                sendMessage(channel, message);
+            }
+        }
+    }
+
+    /**
      * 推送消息给特定用户
      */
     public void sendToUser(long userId, String channelName, Object message) {

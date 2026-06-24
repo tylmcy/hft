@@ -7,7 +7,8 @@ export type ChannelType =
   | 'order_update'
   | 'trade_update'
   | 'account_update'
-  | 'position_update';
+  | 'position_update'
+  | 'agent_alert';
 
 export type MessageType =
   | 'subscribe'
@@ -23,7 +24,8 @@ export type MessageType =
   | 'order_update'
   | 'trade_update'
   | 'account_update'
-  | 'position_update';
+  | 'position_update'
+  | 'agent_alert';
 
 export type KlineInterval = '1m' | '5m' | '15m' | '30m' | '1h' | '1d';
 
@@ -106,6 +108,17 @@ export interface KlineData {
   volume: string;
   openTime: number;
   closeTime: number;
+}
+
+export interface AgentAlertData {
+  agentName: string;
+  alertLevel: 'P0' | 'P1' | 'P2';
+  checkType: string;
+  accountId?: string;
+  symbol?: string;
+  detail: string;
+  suggestion?: string;
+  timestamp: number;
 }
 
 // WebSocket configuration constants (V12.md §8.4.3)

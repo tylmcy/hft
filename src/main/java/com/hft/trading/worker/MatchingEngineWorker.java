@@ -9,6 +9,7 @@ import com.hft.trading.queue.*;
 import com.hft.trading.snapshot.MatchingSnapshotWriter;
 import com.hft.trading.store.InMemoryInstrumentStore;
 import com.hft.trading.store.InMemoryOrderStore;
+import com.hft.trading.util.SlidingWindow;
 import com.hft.trading.websocket.WebSocketPushService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +56,12 @@ public class MatchingEngineWorker implements Runnable {
     private volatile boolean ready = false;
     private volatile boolean replayMode = false;
     private volatile long lastProcessedIndex = -1;
+
+    // 延迟统计
+    private volatile long lastBatchStartTime = 0;
+    private volatile long lastBatchEndTime = 0;
+    private volatile long lastBatchDurationMs = 0;
+    private final SlidingWindow latencyWindow = new SlidingWindow(50);
 
     // 线程
     private Thread workerThread;
@@ -109,6 +116,9 @@ public class MatchingEngineWorker implements Runnable {
 
         while (running) {
             try {
+                long batchStart = System.nanoTime();
+                lastBatchStartTime = batchStart;
+
                 // 批量读取事件
                 List<AccountInputEvent> events = matchingInputQueue.readBatch();
 
@@ -138,6 +148,12 @@ public class MatchingEngineWorker implements Runnable {
 
                 // 更新处理位置
                 lastProcessedIndex = matchingInputQueue.getCurrentIndex();
+
+                long batchEnd = System.nanoTime();
+                lastBatchEndTime = batchEnd;
+                long durationMs = (batchEnd - batchStart) / 1_000_000;
+                lastBatchDurationMs = durationMs;
+                latencyWindow.add(durationMs);
 
             } catch (Exception e) {
                 logger.error("MatchingEngineWorker error: {}", e.getMessage(), e);
@@ -493,6 +509,14 @@ public class MatchingEngineWorker implements Runnable {
     public void setReplayMode(boolean replayMode) { this.replayMode = replayMode; }
 
     public void setLastProcessedIndex(long index) { this.lastProcessedIndex = index; }
+
+    public long getLastBatchDurationMs() { return lastBatchDurationMs; }
+
+    public long getP50LatencyMs() { return latencyWindow.getPercentile(50); }
+
+    public long getP90LatencyMs() { return latencyWindow.getPercentile(90); }
+
+    public long getP99LatencyMs() { return latencyWindow.getPercentile(99); }
 
     /**
      * 获取撮合引擎 Map

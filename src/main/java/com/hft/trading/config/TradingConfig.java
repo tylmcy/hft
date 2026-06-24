@@ -4,6 +4,7 @@ import com.hft.trading.queue.QueueManager;
 import com.hft.trading.service.AlertService;
 import com.hft.trading.service.FutureManager;
 import com.hft.trading.service.IdempotencyService;
+import com.hft.trading.snapshot.SnapshotWorker;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryInstrumentStore;
 import com.hft.trading.store.InMemoryOrderStore;
@@ -65,5 +66,15 @@ public class TradingConfig {
     @Bean
     public QueueManager queueManager() {
         return new QueueManager(chronicleBasePath);
+    }
+
+    @Bean
+    public SnapshotWorker snapshotWorker(QueueManager queueManager, AlertService alertService) {
+        return new SnapshotWorker(
+            queueManager.getAccountInputQueue(),
+            queueManager.getMatchingInputQueue(),
+            "./data/snapshots/",
+            alertService
+        );
     }
 }

@@ -1,10 +1,13 @@
 package com.hft.trading.lifecycle;
 
+import com.hft.trading.agent.ConsistencyAuditAgent;
+import com.hft.trading.agent.OperationsDiagnosticAgent;
 import com.hft.trading.event.AccountInputEvent;
 import com.hft.trading.event.TradingPhase;
 import com.hft.trading.service.SinaInstrumentService;
 import com.hft.trading.queue.*;
 import com.hft.trading.recovery.RecoveryManager;
+import com.hft.trading.snapshot.SnapshotWorker;
 import com.hft.trading.store.*;
 import com.hft.trading.websocket.MarketDataPublisher;
 import com.hft.trading.websocket.WebSocketPushService;
@@ -51,9 +54,14 @@ public class LifecycleManager implements SmartLifecycle {
     private final QueueManager queueManager;
 
     // WebSocket（可选）
-    private WebSocketServer webSocketServer;
-    private WebSocketPushService webSocketPushService;
-    private MarketDataPublisher marketDataPublisher;
+    private final WebSocketServer webSocketServer;
+    private final WebSocketPushService webSocketPushService;
+    private final MarketDataPublisher marketDataPublisher;
+    private final SnapshotWorker snapshotWorker;
+
+    // Agents
+    private final ConsistencyAuditAgent consistencyAuditAgent;
+    private final OperationsDiagnosticAgent operationsDiagnosticAgent;
 
     // Workers
     private AccountWorker accountWorker;
@@ -86,12 +94,24 @@ public class LifecycleManager implements SmartLifecycle {
                             InMemoryPositionStore positionStore,
                             InMemoryOrderStore orderStore,
                             InMemoryInstrumentStore instrumentStore,
-                            QueueManager queueManager) {
+                            QueueManager queueManager,
+                            WebSocketServer webSocketServer,
+                            WebSocketPushService webSocketPushService,
+                            MarketDataPublisher marketDataPublisher,
+                            SnapshotWorker snapshotWorker,
+                            ConsistencyAuditAgent consistencyAuditAgent,
+                            OperationsDiagnosticAgent operationsDiagnosticAgent) {
         this.accountStore = accountStore;
         this.positionStore = positionStore;
         this.orderStore = orderStore;
         this.instrumentStore = instrumentStore;
         this.queueManager = queueManager;
+        this.webSocketServer = webSocketServer;
+        this.webSocketPushService = webSocketPushService;
+        this.marketDataPublisher = marketDataPublisher;
+        this.snapshotWorker = snapshotWorker;
+        this.consistencyAuditAgent = consistencyAuditAgent;
+        this.operationsDiagnosticAgent = operationsDiagnosticAgent;
         this.chronicleBasePath = "./data/chronicle/";
     }
 
@@ -256,11 +276,11 @@ public class LifecycleManager implements SmartLifecycle {
             clearingWorker
         );
 
-        // Create MarketDataPublisher (optional, depends on WebSocket)
-        if (webSocketServer != null) {
-            marketDataPublisher = new MarketDataPublisher(webSocketServer);
-            marketDataPublisher.setMatchingEngines(matchingEngineWorker.getMatchingEngines());
-        }
+        // Set matching engines for MarketDataPublisher
+        marketDataPublisher.setMatchingEngines(matchingEngineWorker.getMatchingEngines());
+
+        // Set workers for OperationsDiagnosticAgent
+        operationsDiagnosticAgent.setWorkers(accountWorker, matchingEngineWorker, clearingWorker);
 
         logger.info("Workers initialized: AccountWorker, MatchingEngineWorker, ClearingWorker, RecoveryManager" +
             (asyncPersistenceWorker != null ? ", AsyncPersistenceWorker" : "") +
@@ -365,6 +385,10 @@ public class LifecycleManager implements SmartLifecycle {
     private void startAllWorkers() {
         logger.info("Starting all workers...");
 
+        // 启动 WebSocketServer
+        webSocketServer.start();
+        sleep(100);
+
         // 按顺序启动：先 AccountWorker，再 MatchingEngine，最后 ClearingWorker
         accountWorker.start();
         sleep(100); // 等待启动
@@ -382,10 +406,12 @@ public class LifecycleManager implements SmartLifecycle {
         }
 
         // 启动 MarketDataPublisher（在所有 Workers 之后）
-        if (marketDataPublisher != null) {
-            marketDataPublisher.start();
-            sleep(100);
-        }
+        marketDataPublisher.start();
+        sleep(100);
+
+        // 启动 SnapshotWorker
+        snapshotWorker.start();
+        sleep(100);
 
         logger.info("All workers started");
     }
@@ -432,10 +458,11 @@ public class LifecycleManager implements SmartLifecycle {
     private void stopAllWorkers() {
         logger.info("Stopping all workers...");
 
-        // 先停止 MarketDataPublisher
-        if (marketDataPublisher != null) {
-            marketDataPublisher.stop();
-        }
+        // 先停止 SnapshotWorker
+        snapshotWorker.stop();
+
+        // 停止 MarketDataPublisher
+        marketDataPublisher.stop();
 
         // 停止 AsyncPersistenceWorker（在 ClearingWorker 之前）
         if (asyncPersistenceWorker != null) {
@@ -453,6 +480,9 @@ public class LifecycleManager implements SmartLifecycle {
         if (accountWorker != null) {
             accountWorker.stop();
         }
+
+        // 停止 WebSocketServer
+        webSocketServer.stop();
 
         logger.info("All workers stopped");
     }
@@ -542,22 +572,6 @@ public class LifecycleManager implements SmartLifecycle {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    /**
-     * 设置 WebSocket 推送服务
-     * 用于 Spring 注入 WebSocketPushService
-     */
-    public void setWebSocketPushService(WebSocketPushService webSocketPushService) {
-        this.webSocketPushService = webSocketPushService;
-    }
-
-    /**
-     * 设置 WebSocket 服务器
-     * 用于 Spring 注入 WebSocketServer
-     */
-    public void setWebSocketServer(WebSocketServer webSocketServer) {
-        this.webSocketServer = webSocketServer;
     }
 
     // Getters for Workers

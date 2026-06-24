@@ -2,11 +2,15 @@ package com.hft.trading.lifecycle;
 
 import com.hft.trading.queue.QueueManager;
 import com.hft.trading.service.AlertService;
+import com.hft.trading.snapshot.SnapshotWorker;
 import com.hft.trading.store.InMemoryAccountStore;
 import com.hft.trading.store.InMemoryInstrumentStore;
 import com.hft.trading.store.InMemoryOrderStore;
 import com.hft.trading.store.InMemoryPositionStore;
 import com.hft.trading.util.TestUtils;
+import com.hft.trading.websocket.MarketDataPublisher;
+import com.hft.trading.websocket.WebSocketPushService;
+import com.hft.trading.websocket.WebSocketServer;
 import com.hft.trading.worker.AccountWorker;
 import com.hft.trading.worker.ClearingWorker;
 import com.hft.trading.worker.MatchingEngineWorker;
@@ -20,6 +24,7 @@ import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * LifecycleManager 单元测试
@@ -53,13 +58,25 @@ class LifecycleManagerTest {
         String basePath = tempDir.toAbsolutePath().toString();
         QueueManager queueManager = new QueueManager(basePath);
 
+        // Create mocks for WebSocket and SnapshotWorker components
+        WebSocketServer webSocketServer = mock(WebSocketServer.class);
+        WebSocketPushService webSocketPushService = mock(WebSocketPushService.class);
+        MarketDataPublisher marketDataPublisher = mock(MarketDataPublisher.class);
+        SnapshotWorker snapshotWorker = mock(SnapshotWorker.class);
+
         // Create LifecycleManager
         lifecycleManager = new LifecycleManager(
             accountStore,
             positionStore,
             orderStore,
             instrumentStore,
-            queueManager
+            queueManager,
+            webSocketServer,
+            webSocketPushService,
+            marketDataPublisher,
+            snapshotWorker,
+            null, // ConsistencyAuditAgent
+            null  // OperationsDiagnosticAgent
         );
     }
 

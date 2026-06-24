@@ -76,6 +76,13 @@ public class WebSocketPushService {
         webSocketServer.broadcast("kline", kline.getSymbol(), message);
     }
 
+    /**
+     * 推送 Agent 告警
+     */
+    public void pushAgentAlert(AgentAlertMessage message) {
+        webSocketServer.broadcast("agent_alert", message);
+    }
+
     // ========== Inner Message DTOs ==========
 
     /**
@@ -525,6 +532,84 @@ public class WebSocketPushService {
 
         public void setTradeCount(Integer tradeCount) {
             this.tradeCount = tradeCount;
+        }
+    }
+
+    /**
+     * Agent 告警消息
+     */
+    public static class AgentAlertMessage {
+        private String agentName;
+        private String alertLevel;
+        private String checkType;
+        private Long accountId;
+        private String symbol;
+        private String detail;
+        private String suggestion;
+        private long timestamp;
+
+        public String getAgentName() {
+            return agentName;
+        }
+
+        public void setAgentName(String agentName) {
+            this.agentName = agentName;
+        }
+
+        public String getAlertLevel() {
+            return alertLevel;
+        }
+
+        public void setAlertLevel(String alertLevel) {
+            this.alertLevel = alertLevel;
+        }
+
+        public String getCheckType() {
+            return checkType;
+        }
+
+        public void setCheckType(String checkType) {
+            this.checkType = checkType;
+        }
+
+        public Long getAccountId() {
+            return accountId;
+        }
+
+        public void setAccountId(Long accountId) {
+            this.accountId = accountId;
+        }
+
+        public String getSymbol() {
+            return symbol;
+        }
+
+        public void setSymbol(String symbol) {
+            this.symbol = symbol;
+        }
+
+        public String getDetail() {
+            return detail;
+        }
+
+        public void setDetail(String detail) {
+            this.detail = detail;
+        }
+
+        public String getSuggestion() {
+            return suggestion;
+        }
+
+        public void setSuggestion(String suggestion) {
+            this.suggestion = suggestion;
+        }
+
+        public long getTimestamp() {
+            return timestamp;
+        }
+
+        public void setTimestamp(long timestamp) {
+            this.timestamp = timestamp;
         }
     }
 }
