@@ -38,7 +38,6 @@ hft/
 │   ├── websocket/                  # WebSocket 服务
 │   └── ...
 ├── frontend/                       # 前端 React 应用
-├── CLAUDE.md                       # 项目说明（给 AI 助手）
 └── README.md                       # 本文件
 ```
 
